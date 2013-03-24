@@ -62,6 +62,7 @@ abstract class CActiveRecord extends CModel
 	private $_pk;								// old primary key value
 	private $_alias='t';						// the table alias being used for query
 
+	private static $_mdCache = array();			// meta data cache
 
 	/**
 	 * Constructor.
@@ -414,7 +415,8 @@ abstract class CActiveRecord extends CModel
 	 */
 	protected static function generateMetaData(CActiveRecord $model)
 	{
-		return new CActiveRecordMetaData($model);
+		return self::$_mdCache[$model] ? self::$_mdCache[$model]
+			: (self::$_mdCache[$model] = new CActiveRecordMetaData($model));
 	}
 
     /**
