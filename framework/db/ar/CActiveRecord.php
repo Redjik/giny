@@ -415,8 +415,11 @@ abstract class CActiveRecord extends CModel
 	 */
 	protected static function generateMetaData(CActiveRecord $model)
 	{
-		return self::$_mdCache[$model] ? self::$_mdCache[$model]
-			: (self::$_mdCache[$model] = new CActiveRecordMetaData($model));
+		$model_class = get_class($model);
+		if (isset (self::$_mdCache[$model_class])){
+			return self::$_mdCache[$model_class];
+		}
+		return self::$_mdCache[$model_class] = new CActiveRecordMetaData($model);
 	}
 
     /**
