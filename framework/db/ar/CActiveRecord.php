@@ -385,8 +385,12 @@ abstract class CActiveRecord extends CModel
 			return self::$_models[$className];
 		else
 		{
+			if (YII_DEBUG && $className != __CLASS__ && !is_subclass_of($className, __CLASS__))
+			{
+                throw new CDbException(Yii::t('yii','A model class should extend CActiveRecord'));
+			}
 			$model=self::$_models[$className]=new $className(null);
-			$model->_md=call_user_func(array($model,'generateMetaData'),$model);
+			$model->_md=$className::generateMetaData($model);
 			$model->attachBehaviors($model->behaviors());
 			return $model;
 		}
@@ -400,11 +404,7 @@ abstract class CActiveRecord extends CModel
 	{
 		if($this->_md!==null)
 			return $this->_md;
-		else
-		{
-			$class = get_class($this);
-			return $this->_md=call_user_func(array($class,'generateMetaData'),$this);
-		}
+        return $this->_md=static::generateMetaData($this);
 	}
 
 	/**
@@ -415,8 +415,11 @@ abstract class CActiveRecord extends CModel
 	 */
 	protected static function generateMetaData(CActiveRecord $model)
 	{
-		return self::$_mdCache[$model] ? self::$_mdCache[$model]
-			: (self::$_mdCache[$model] = new CActiveRecordMetaData($model));
+		$model_class = get_class($model);
+		if (isset (self::$_mdCache[$model_class])){
+			return self::$_mdCache[$model_class];
+		}
+		return self::$_mdCache[$model_class] = new CActiveRecordMetaData($model);
 	}
 
     /**
