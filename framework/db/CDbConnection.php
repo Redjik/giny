@@ -105,7 +105,14 @@
  */
 class CDbConnection extends CApplicationComponent
 {
-	/**
+
+    const TYPE_MASTER = 'master';
+
+    const TYPE_SLAVE = 'slave';
+
+    public $connectionType;
+
+    /**
 	 * @var string The Data Source Name, or DSN, contains the information required to connect to the database.
 	 * @see http://www.php.net/manual/en/function.PDO-construct.php
 	 *

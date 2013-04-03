@@ -315,7 +315,11 @@ class CDbCommand extends CComponent
 	 */
 	public function execute($params=array())
 	{
-		if($this->_connection->enableParamLogging && ($pars=array_merge($this->_paramLog,$params))!==array())
+		if ($this->getConnection()->connectionType === CDbConnection::TYPE_SLAVE)
+            throw new CDbException(Yii::t('yii','CDbCommand failed to execute the SQL statement: {error}',
+                array('{error}'=>'You can not make changes to slave')));
+
+        if($this->_connection->enableParamLogging && ($pars=array_merge($this->_paramLog,$params))!==array())
 		{
 			$p=array();
 			foreach($pars as $name=>$value)
