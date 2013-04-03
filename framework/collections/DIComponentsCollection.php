@@ -63,12 +63,13 @@ abstract class DIComponentsCollection extends CComponentCollection
     /**
      * Switch current component to another
      * @param $name
+     * @return $this
      * @throws CException
      */
     public function setCurrentComponent($name)
     {
         if ($this->_currentComponent === $name)
-            return;
+            return $this;
 
         if ($this->hasComponent($name))
             $this->_currentComponent = $name;
@@ -78,7 +79,7 @@ abstract class DIComponentsCollection extends CComponentCollection
 
         $this->logComponentSwitch($name);
 
-
+        return $this;
     }
 
     /**
