@@ -12,7 +12,10 @@ class CDbSingleConnectionRouter extends CDbConnectionRouter
     public function init()
     {
         if (self::$db === null)
+        {
             self::$db = Yii::createComponent($this->connection);
+            self::$db->init();
+        }
 
         $this->currentConnection = self::$db;
     }

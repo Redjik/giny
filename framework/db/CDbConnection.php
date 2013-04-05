@@ -103,7 +103,7 @@
  * @package system.db
  * @since 1.0
  */
-class CDbConnection extends CApplicationComponent
+class CDbConnection extends CComponent
 {
 	/**
 	 * @var string The Data Source Name, or DSN, contains the information required to connect to the database.
@@ -298,12 +298,9 @@ class CDbConnection extends CApplicationComponent
 	 * Initializes the component.
 	 * This method is required by {@link IApplicationComponent} and is invoked by application
 	 * when the CDbConnection is used as an application component.
-	 * If you override this method, make sure to call the parent implementation
-	 * so that the component can be marked as initialized.
 	 */
 	public function init()
 	{
-		parent::init();
 		if($this->autoConnect)
 			$this->setActive(true);
 	}
