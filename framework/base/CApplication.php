@@ -432,7 +432,7 @@ abstract class CApplication extends CModule
 
 	/**
 	 * Returns the database connection component.
-	 * @return CDbConnection the database connection
+	 * @return CDbConnection|CDbServiceLocator the database connection
 	 */
 	public function getDb()
 	{

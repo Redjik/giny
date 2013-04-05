@@ -50,7 +50,7 @@ abstract class CActiveRecord extends CModel
 	 * By default, this is the 'db' application component.
 	 * @see getDbConnection
 	 */
-	public static $db;
+	protected $db;
 
 	private static $_models=array();			// class name => model
 
@@ -637,15 +637,16 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function getDbConnection()
 	{
-		if(self::$db!==null)
-			return self::$db;
+		if($this->db!==null)
+			return $this->db;
 		else
 		{
-			self::$db=Yii::app()->getDb();
-			if(self::$db instanceof CDbConnection || self::$db instanceof CDbCollection)
-				return self::$db;
-			else
-				throw new CDbException(Yii::t('yii','Active Record requires a "db" CDbConnection application component.'));
+            if (Yii::app()->getDb() instanceof CDbServiceLocator)
+                $this->db = Yii::app()->getDb()->locateFor(get_class($this));
+            else
+                $this->db=Yii::app()->getDb();
+
+			return $this->db;
 		}
 	}
 

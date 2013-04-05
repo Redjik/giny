@@ -1,9 +1,10 @@
 <?php
 
-abstract class CComponentCollection extends CComponent
+class CDIContainer extends CComponent
 {
     private $_components = array();
     private $_componentConfig = array();
+    private $_componentsCategories = array();
 
     /**
      * Getter magic method.
@@ -182,15 +183,6 @@ abstract class CComponentCollection extends CComponent
     {
         foreach ($components as $id => $component)
             $this->setComponent($id, $component, $merge);
-    }
-
-    /**
-     * Loads static application components.
-     */
-    protected function preloadComponents()
-    {
-        foreach($this->preload as $id)
-            $this->getComponent($id);
     }
 
 }

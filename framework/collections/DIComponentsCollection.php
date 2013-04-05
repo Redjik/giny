@@ -1,6 +1,6 @@
 <?php
 
-abstract class DIComponentsCollection extends CComponentCollection
+abstract class DIComponentsCollection extends CDIContainer
 {
     /**
      * @var string name of the default component to process the request
