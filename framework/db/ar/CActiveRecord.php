@@ -644,7 +644,7 @@ abstract class CActiveRecord extends CModel
             if (Yii::app()->getDb() instanceof CDbServiceLocator)
                 $this->db = Yii::app()->getDb()->locateFor(get_class($this));
             else
-                $this->db=Yii::app()->getDb();
+                throw new CDbException(Yii::t('yii','Active Record requires a "db" CDbServiceLocator application component.'));
 
 			return $this->db;
 		}
