@@ -81,7 +81,7 @@
  * @property boolean $active Whether the DB connection is established.
  * @property PDO $pdoInstance The PDO instance, null if the connection is not established yet.
  * @property CDbTransaction $currentTransaction The currently active transaction. Null if no active transaction.
- * @property CDbSchema $schema The database schema for the current connection.
+ * @property GPoolSchema $schema The database schema for the current connection.
  * @property CDbCommandBuilder $commandBuilder The command builder.
  * @property string $lastInsertID The row ID of the last row inserted, or the last value retrieved from the sequence object.
  * @property mixed $columnCase The case of the column names.
@@ -122,24 +122,7 @@ class CDbConnection extends CApplicationComponent
 	 * @var string the password for establishing DB connection. Defaults to empty string.
 	 */
 	public $password='';
-	/**
-	 * @var integer number of seconds that table metadata can remain valid in cache.
-	 * Use 0 or negative value to indicate not caching schema.
-	 * If greater than 0 and the primary cache is enabled, the table metadata will be cached.
-	 * @see schemaCachingExclude
-	 */
-	public $schemaCachingDuration=0;
-	/**
-	 * @var array list of tables whose metadata should NOT be cached. Defaults to empty array.
-	 * @see schemaCachingDuration
-	 */
-	public $schemaCachingExclude=array();
-	/**
-	 * @var string the ID of the cache application component that is used to cache the table metadata.
-	 * Defaults to 'cache' which refers to the primary cache application component.
-	 * Set this property to false if you want to disable caching table metadata.
-	 */
-	public $schemaCacheID='cache';
+
 	/**
 	 * @var integer number of seconds that query results can remain valid in cache.
 	 * Use 0 or negative value to indicate not caching query results (the default behavior).
@@ -227,22 +210,6 @@ class CDbConnection extends CApplicationComponent
 	 * @since 1.1.1
 	 */
 	public $initSQLs;
-	/**
-	 * @var array mapping between PDO driver and schema class name.
-	 * A schema class can be specified using path alias.
-	 * @since 1.1.6
-	 */
-	public $driverMap=array(
-		'pgsql'=>'CPgsqlSchema',    // PostgreSQL
-		'mysqli'=>'CMysqlSchema',   // MySQL
-		'mysql'=>'CMysqlSchema',    // MySQL
-		'sqlite'=>'CSqliteSchema',  // sqlite 3
-		'sqlite2'=>'CSqliteSchema', // sqlite 2
-		'mssql'=>'CMssqlSchema',    // Mssql driver on windows hosts
-		'dblib'=>'CMssqlSchema',    // dblib drivers on linux (and maybe others os) hosts
-		'sqlsrv'=>'CMssqlSchema',   // Mssql
-		'oci'=>'COciSchema',        // Oracle driver
-	);
 
 	/**
 	 * @var string Custom PDO wrapper class.
@@ -494,35 +461,6 @@ class CDbConnection extends CApplicationComponent
 	}
 
 	/**
-	 * Returns the database schema for the current connection
-	 * @throws CDbException if CDbConnection does not support reading schema for specified database driver
-	 * @return CDbSchema the database schema for the current connection
-	 */
-	public function getSchema()
-	{
-		if($this->_schema!==null)
-			return $this->_schema;
-		else
-		{
-			$driver=$this->getDriverName();
-			if(isset($this->driverMap[$driver]))
-				return $this->_schema=Yii::createComponent($this->driverMap[$driver], $this);
-			else
-				throw new CDbException(Yii::t('yii','CDbConnection does not support reading schema for {driver} database.',
-					array('{driver}'=>$driver)));
-		}
-	}
-
-	/**
-	 * Returns the SQL command builder for the current DB connection.
-	 * @return CDbCommandBuilder the command builder
-	 */
-	public function getCommandBuilder()
-	{
-		return $this->getSchema()->getCommandBuilder();
-	}
-
-	/**
 	 * Returns the ID of the last inserted row or sequence value.
 	 * @param string $sequenceName name of the sequence object (required by some DBMS)
 	 * @return string the row ID of the last row inserted, or the last value retrieved from the sequence object
@@ -550,28 +488,6 @@ class CDbConnection extends CApplicationComponent
 			return $value;
 		else  // the driver doesn't support quote (e.g. oci)
 			return "'" . addcslashes(str_replace("'", "''", $str), "\000\n\r\\\032") . "'";
-	}
-
-	/**
-	 * Quotes a table name for use in a query.
-	 * If the table name contains schema prefix, the prefix will also be properly quoted.
-	 * @param string $name table name
-	 * @return string the properly quoted table name
-	 */
-	public function quoteTableName($name)
-	{
-		return $this->getSchema()->quoteTableName($name);
-	}
-
-	/**
-	 * Quotes a column name for use in a query.
-	 * If the column name contains prefix, the prefix will also be properly quoted.
-	 * @param string $name column name
-	 * @return string the properly quoted column name
-	 */
-	public function quoteColumnName($name)
-	{
-		return $this->getSchema()->quoteColumnName($name);
 	}
 
 	/**
@@ -654,16 +570,7 @@ class CDbConnection extends CApplicationComponent
 		$this->setAttribute(PDO::ATTR_PERSISTENT,$value);
 	}
 
-	/**
-	 * Returns the name of the DB driver
-	 * @return string name of the DB driver
-	 */
-	public function getDriverName()
-	{
-		if(($pos=strpos($this->connectionString, ':'))!==false)
-			return strtolower(substr($this->connectionString, 0, $pos));
-		// return $this->getAttribute(PDO::ATTR_DRIVER_NAME);
-	}
+
 
 	/**
 	 * Returns the version information of the DB driver.

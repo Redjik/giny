@@ -12,7 +12,7 @@
  * CDbCommandBuilder provides basic methods to create query commands for tables.
  *
  * @property CDbConnection $dbConnection Database connection.
- * @property CDbSchema $schema The schema for this command builder.
+ * @property GPoolSchema $schema The schema for this command builder.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @package system.db.schema
@@ -26,7 +26,7 @@ class CDbCommandBuilder extends CComponent
 	private $_connection;
 
 	/**
-	 * @param CDbSchema $schema the schema for this command builder
+	 * @param GPoolSchema $schema the schema for this command builder
 	 */
 	public function __construct($schema)
 	{
@@ -43,7 +43,7 @@ class CDbCommandBuilder extends CComponent
 	}
 
 	/**
-	 * @return CDbSchema the schema for this command builder.
+	 * @return GPoolSchema the schema for this command builder.
 	 */
 	public function getSchema()
 	{

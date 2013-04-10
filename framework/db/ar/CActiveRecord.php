@@ -45,12 +45,6 @@ abstract class CActiveRecord extends CModel
 	const MANY_MANY='CManyManyRelation';
 	const STAT='CStatRelation';
 
-	/**
-	 * @var CDbConnection the default database connection for all active record classes.
-	 * By default, this is the 'db' application component.
-	 * @see getDbConnection
-	 */
-	public static $db;
 
 	private static $_models=array();			// class name => model
 
@@ -93,6 +87,14 @@ abstract class CActiveRecord extends CModel
 	public function init()
 	{
 	}
+
+    /**
+     * @return GDbPool
+     */
+    protected function getPool()
+    {
+        return Yii::app()->getDb();
+    }
 
 	/**
 	 * Sets the parameters about query caching.
@@ -626,27 +628,6 @@ abstract class CActiveRecord extends CModel
 		}
 		else
 			return $this->generateAttributeLabel($attribute);
-	}
-
-	/**
-	 * Returns the database connection used by active record.
-	 * By default, the "db" application component is used as the database connection.
-	 * You may override this method if you want to use a different database connection.
-	 * @throws CDbException if "db" application component is not defined
-	 * @return CDbConnection the database connection used by active record.
-	 */
-	public function getDbConnection()
-	{
-		if(self::$db!==null)
-			return self::$db;
-		else
-		{
-			self::$db=Yii::app()->getDb();
-			if(self::$db instanceof CDbConnection)
-				return self::$db;
-			else
-				throw new CDbException(Yii::t('yii','Active Record requires a "db" CDbConnection application component.'));
-		}
 	}
 
 	/**

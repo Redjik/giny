@@ -16,7 +16,7 @@
  * @author Ricardo Grana <rickgrana@yahoo.com.br>
  * @package system.db.schema.oci
  */
-class COciSchema extends CDbSchema
+class COciSchema extends GPoolSchema
 {
 	private $_defaultSchema = '';
 

@@ -16,7 +16,7 @@
  * @author Christophe Boulain <Christophe.Boulain@gmail.com>
  * @package system.db.schema.mssql
  */
-class CMssqlSchema extends CDbSchema
+class CMssqlSchema extends GPoolSchema
 {
 	const DEFAULT_SCHEMA='dbo';
 

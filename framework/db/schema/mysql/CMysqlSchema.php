@@ -15,7 +15,7 @@
  * @package system.db.schema.mysql
  * @since 1.0
  */
-class CMysqlSchema extends CDbSchema
+class CMysqlSchema extends GPoolSchema
 {
 	/**
 	 * @var array the abstract column types mapped to physical column types.

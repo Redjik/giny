@@ -15,7 +15,7 @@
  * @package system.db.schema.pgsql
  * @since 1.0
  */
-class CPgsqlSchema extends CDbSchema
+class CPgsqlSchema extends GPoolSchema
 {
 	const DEFAULT_SCHEMA='public';
 

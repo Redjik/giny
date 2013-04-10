@@ -8,7 +8,7 @@ class GDbCommandBuilder extends CComponent
     private $_connection;
 
     /**
-     * @param CDbSchema $schema the schema for this command builder
+     * @param GPoolSchema $schema the schema for this command builder
      */
     public function __construct($schema)
     {
@@ -25,7 +25,7 @@ class GDbCommandBuilder extends CComponent
     }
 
     /**
-     * @return CDbSchema the schema for this command builder.
+     * @return GPoolSchema the schema for this command builder.
      */
     public function getSchema()
     {

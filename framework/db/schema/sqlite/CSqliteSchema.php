@@ -15,7 +15,7 @@
  * @package system.db.schema.sqlite
  * @since 1.0
  */
-class CSqliteSchema extends CDbSchema
+class CSqliteSchema extends GPoolSchema
 {
 	/**
 	 * @var array the abstract column types mapped to physical column types.

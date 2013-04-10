@@ -195,7 +195,7 @@ EOD;
 
 	/**
 	 * Generates the mapping table between table names and class names.
-	 * @param CDbSchema $schema the database schema
+	 * @param GPoolSchema $schema the database schema
 	 * @param string $pattern a regular expression that may be used to filter table names
 	 */
 	protected function generateClassNames($schema,$pattern=null)
