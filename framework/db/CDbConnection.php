@@ -468,20 +468,6 @@ class CDbConnection extends CApplicationComponent
 	}
 
 	/**
-	 * Creates a command for execution.
-	 * @param mixed $query the DB query to be executed. This can be either a string representing a SQL statement,
-	 * or an array representing different fragments of a SQL statement. Please refer to {@link CDbCommand::__construct}
-	 * for more details about how to pass an array as the query. If this parameter is not given,
-	 * you will have to call query builder methods of {@link CDbCommand} to build the DB query.
-	 * @return CDbCommand the DB command
-	 */
-	public function createCommand($query=null)
-	{
-		$this->setActive(true);
-		return new CDbCommand($this,$query);
-	}
-
-	/**
 	 * Returns the currently active transaction.
 	 * @return CDbTransaction the currently active transaction. Null if no active transaction.
 	 */
@@ -589,24 +575,6 @@ class CDbConnection extends CApplicationComponent
 	}
 
 	/**
-	 * Determines the PDO type for the specified PHP type.
-	 * @param string $type The PHP type (obtained by gettype() call).
-	 * @return integer the corresponding PDO type
-	 */
-	public function getPdoType($type)
-	{
-		static $map=array
-		(
-			'boolean'=>PDO::PARAM_BOOL,
-			'integer'=>PDO::PARAM_INT,
-			'string'=>PDO::PARAM_STR,
-			'resource'=>PDO::PARAM_LOB,
-			'NULL'=>PDO::PARAM_NULL,
-		);
-		return isset($map[$type]) ? $map[$type] : PDO::PARAM_STR;
-	}
-
-	/**
 	 * Returns the case of the column names
 	 * @return mixed the case of the column names
 	 * @see http://www.php.net/manual/en/pdo.setattribute.php
@@ -683,7 +651,7 @@ class CDbConnection extends CApplicationComponent
 	 */
 	public function setPersistent($value)
 	{
-		return $this->setAttribute(PDO::ATTR_PERSISTENT,$value);
+		$this->setAttribute(PDO::ATTR_PERSISTENT,$value);
 	}
 
 	/**

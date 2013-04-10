@@ -406,11 +406,7 @@ class CDbCommandBuilder extends CComponent
 	 */
 	public function applyLimit($sql,$limit,$offset)
 	{
-		if($limit>=0)
-			$sql.=' LIMIT '.(int)$limit;
-		if($offset>0)
-			$sql.=' OFFSET '.(int)$offset;
-		return $sql;
+		return GDbQueryHelper::applyLimit($sql,$limit,$offset);
 	}
 
 	/**

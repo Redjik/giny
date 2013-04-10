@@ -69,16 +69,28 @@ class CDbCommand extends CComponent
 	 */
 	public $params=array();
 
-	private $_connection;
+    /**
+     * @var IDbPool
+     */
+    private $_pool;
+    private $_forceMaster;
+
+    /**
+     * @var CDbConnection
+     */
+    private $_connection;
 	private $_text;
-	private $_statement;
+    /**
+     * @var PDOStatement
+     */
+    private $_statement;
 	private $_paramLog=array();
 	private $_query;
 	private $_fetchMode = array(PDO::FETCH_ASSOC);
 
 	/**
 	 * Constructor.
-	 * @param CDbConnection $connection the database connection
+	 * @param IDbPool $connectionPool the database connection
 	 * @param mixed $query the DB query to be executed. This can be either
 	 * a string representing a SQL statement, or an array whose name-value pairs
 	 * will be used to set the corresponding properties of the created command object.
@@ -97,9 +109,9 @@ class CDbCommand extends CComponent
  	 * {@link setFetchMode FetchMode}. See {@link http://www.php.net/manual/en/function.PDOStatement-setFetchMode.php}
  	 * for more details.
 	 */
-	public function __construct(CDbConnection $connection,$query=null)
+	public function __construct(IDbPool $connectionPool,$query=null)
 	{
-		$this->_connection=$connection;
+		$this->_pool = $connectionPool;
 		if(is_array($query))
 		{
 			foreach($query as $name=>$value)
@@ -161,15 +173,19 @@ class CDbCommand extends CComponent
 		return $this->_text;
 	}
 
-	/**
-	 * Specifies the SQL statement to be executed.
-	 * Any previous execution will be terminated or cancel.
-	 * @param string $value the SQL statement to be executed
-	 * @return CDbCommand this command instance
-	 */
-	public function setText($value)
+    /**
+     * Specifies the SQL statement to be executed.
+     * Any previous execution will be terminated or cancel.
+     * @param string $value the SQL statement to be executed
+     * @param bool $forInner for inner queries
+     * @return CDbCommand this command instance
+     */
+	public function setText($value,$forInner = false)
 	{
-		if($this->_connection->tablePrefix!==null && $value!='')
+        if (!$forInner)
+            $this->_connection = $this->_pool->getConnectionFromSql($value,$this->_forceMaster);
+
+        if($this->_connection->tablePrefix!==null && $value!='')
 			$this->_text=preg_replace('/{{(.*?)}}/',$this->_connection->tablePrefix.'\1',$value);
 		else
 			$this->_text=$value;
@@ -208,7 +224,7 @@ class CDbCommand extends CComponent
 		{
 			try
 			{
-				$this->_statement=$this->getConnection()->getPdoInstance()->prepare($this->getText());
+				$this->_statement=$this->_connection->getPdoInstance()->prepare($this->getText());
 				$this->_paramLog=array();
 			}
 			catch(Exception $e)
@@ -246,7 +262,7 @@ class CDbCommand extends CComponent
 	{
 		$this->prepare();
 		if($dataType===null)
-			$this->_statement->bindParam($name,$value,$this->_connection->getPdoType(gettype($value)));
+			$this->_statement->bindParam($name,$value,$this->_pool->getPdoType(gettype($value)));
 		elseif($length===null)
 			$this->_statement->bindParam($name,$value,$dataType);
 		elseif($driverOptions===null)
@@ -272,7 +288,7 @@ class CDbCommand extends CComponent
 	{
 		$this->prepare();
 		if($dataType===null)
-			$this->_statement->bindValue($name,$value,$this->_connection->getPdoType(gettype($value)));
+			$this->_statement->bindValue($name,$value,$this->_pool->getPdoType(gettype($value)));
 		else
 			$this->_statement->bindValue($name,$value,$dataType);
 		$this->_paramLog[$name]=$value;
@@ -294,7 +310,7 @@ class CDbCommand extends CComponent
 		$this->prepare();
 		foreach($values as $name=>$value)
 		{
-			$this->_statement->bindValue($name,$value,$this->_connection->getPdoType(gettype($value)));
+			$this->_statement->bindValue($name,$value,$this->_pool->getPdoType(gettype($value)));
 			$this->_paramLog[$name]=$value;
 		}
 		return $this;
@@ -315,7 +331,9 @@ class CDbCommand extends CComponent
 	 */
 	public function execute($params=array())
 	{
-		if($this->_connection->enableParamLogging && ($pars=array_merge($this->_paramLog,$params))!==array())
+        $this->getWriteConnection();
+
+        if($this->_connection->enableParamLogging && ($pars=array_merge($this->_paramLog,$params))!==array())
 		{
 			$p=array();
 			foreach($pars as $name=>$value)
@@ -469,7 +487,9 @@ class CDbCommand extends CComponent
 	 */
 	private function queryInternal($method,$mode,$params=array())
 	{
-		$params=array_merge($this->params,$params);
+        $this->getReadConnection();
+
+        $params=array_merge($this->params,$params);
 
 		if($this->_connection->enableParamLogging && ($pars=array_merge($this->_paramLog,$params))!==array())
 		{
@@ -491,7 +511,8 @@ class CDbCommand extends CComponent
 			$this->_connection->queryCachingCount--;
 			$cacheKey='yii:dbquery'.$this->_connection->connectionString.':'.$this->_connection->username;
 			$cacheKey.=':'.$this->getText().':'.serialize(array_merge($this->_paramLog,$params));
-			if(($result=$cache->get($cacheKey))!==false)
+            /** @var $cache CCache */
+            if(($result=$cache->get($cacheKey))!==false)
 			{
 				Yii::trace('Query result found in cache','system.db.CDbCommand');
 				return $result[0];
@@ -605,7 +626,9 @@ class CDbCommand extends CComponent
 	 */
 	public function select($columns='*', $option='')
 	{
-		if(is_string($columns) && strpos($columns,'(')!==false)
+        $this->getReadConnection();
+
+        if(is_string($columns) && strpos($columns,'(')!==false)
 			$this->_query['select']=$columns;
 		else
 		{
@@ -697,7 +720,9 @@ class CDbCommand extends CComponent
 	 */
 	public function from($tables)
 	{
-		if(is_string($tables) && strpos($tables,'(')!==false)
+        $this->getReadConnection();
+
+        if(is_string($tables) && strpos($tables,'(')!==false)
 			$this->_query['from']=$tables;
 		else
 		{
@@ -779,7 +804,8 @@ class CDbCommand extends CComponent
 	 */
 	public function where($conditions, $params=array())
 	{
-		$this->_query['where']=$this->processConditions($conditions);
+        $this->getReadConnection();
+        $this->_query['where']=$this->processConditions($conditions);
 
 		foreach($params as $name=>$value)
 			$this->params[$name]=$value;
@@ -800,7 +826,8 @@ class CDbCommand extends CComponent
 	 */
 	public function andWhere($conditions,$params=array())
 	{
-		if(isset($this->_query['where']))
+        $this->getReadConnection();
+        if(isset($this->_query['where']))
 			$this->_query['where']=$this->processConditions(array('AND',$this->_query['where'],$conditions));
 		else
 			$this->_query['where']=$this->processConditions($conditions);
@@ -824,7 +851,8 @@ class CDbCommand extends CComponent
 	 */
 	public function orWhere($conditions,$params=array())
 	{
-		if(isset($this->_query['where']))
+        $this->getReadConnection();
+        if(isset($this->_query['where']))
 			$this->_query['where']=$this->processConditions(array('OR',$this->_query['where'],$conditions));
 		else
 			$this->_query['where']=$this->processConditions($conditions);
@@ -971,7 +999,8 @@ class CDbCommand extends CComponent
 	 */
 	public function group($columns)
 	{
-		if(is_string($columns) && strpos($columns,'(')!==false)
+        $this->getReadConnection();
+        if(is_string($columns) && strpos($columns,'(')!==false)
 			$this->_query['group']=$columns;
 		else
 		{
@@ -1020,7 +1049,8 @@ class CDbCommand extends CComponent
 	 */
 	public function having($conditions, $params=array())
 	{
-		$this->_query['having']=$this->processConditions($conditions);
+        $this->getReadConnection();
+        $this->_query['having']=$this->processConditions($conditions);
 		foreach($params as $name=>$value)
 			$this->params[$name]=$value;
 		return $this;
@@ -1065,7 +1095,8 @@ class CDbCommand extends CComponent
 	 */
 	public function order($columns)
 	{
-		if(is_string($columns) && strpos($columns,'(')!==false)
+        $this->getReadConnection();
+        if(is_string($columns) && strpos($columns,'(')!==false)
 			$this->_query['order']=$columns;
 		else
 		{
@@ -1226,7 +1257,9 @@ class CDbCommand extends CComponent
 	 */
 	public function insert($table, $columns)
 	{
-		$params=array();
+        $this->getWriteConnection();
+
+        $params=array();
 		$names=array();
 		$placeholders=array();
 		foreach($columns as $name=>$value)
@@ -1247,7 +1280,7 @@ class CDbCommand extends CComponent
 		$sql='INSERT INTO ' . $this->_connection->quoteTableName($table)
 			. ' (' . implode(', ',$names) . ') VALUES ('
 			. implode(', ', $placeholders) . ')';
-		return $this->setText($sql)->execute($params);
+		return $this->setText($sql,true)->execute($params);
 	}
 
 	/**
@@ -1264,7 +1297,9 @@ class CDbCommand extends CComponent
 	 */
 	public function update($table, $columns, $conditions='', $params=array())
 	{
-		$lines=array();
+        $this->getWriteConnection();
+
+        $lines=array();
 		foreach($columns as $name=>$value)
 		{
 			if($value instanceof CDbExpression)
@@ -1282,7 +1317,7 @@ class CDbCommand extends CComponent
 		$sql='UPDATE ' . $this->_connection->quoteTableName($table) . ' SET ' . implode(', ', $lines);
 		if(($where=$this->processConditions($conditions))!='')
 			$sql.=' WHERE '.$where;
-		return $this->setText($sql)->execute($params);
+		return $this->setText($sql,true)->execute($params);
 	}
 
 	/**
@@ -1296,10 +1331,12 @@ class CDbCommand extends CComponent
 	 */
 	public function delete($table, $conditions='', $params=array())
 	{
-		$sql='DELETE FROM ' . $this->_connection->quoteTableName($table);
+        $this->getWriteConnection();
+
+        $sql='DELETE FROM ' . $this->_connection->quoteTableName($table);
 		if(($where=$this->processConditions($conditions))!='')
 			$sql.=' WHERE '.$where;
-		return $this->setText($sql)->execute($params);
+		return $this->setText($sql,true)->execute($params);
 	}
 
 	/**
@@ -1321,7 +1358,8 @@ class CDbCommand extends CComponent
 	 */
 	public function createTable($table, $columns, $options=null)
 	{
-		return $this->setText($this->getConnection()->getSchema()->createTable($table, $columns, $options))->execute();
+		$this->getWriteConnection();
+        return $this->setText($this->_connection->getSchema()->createTable($table, $columns, $options),true)->execute();
 	}
 
 	/**
@@ -1333,7 +1371,8 @@ class CDbCommand extends CComponent
 	 */
 	public function renameTable($table, $newName)
 	{
-		return $this->setText($this->getConnection()->getSchema()->renameTable($table, $newName))->execute();
+        $this->getWriteConnection();
+        return $this->setText($this->_connection->getSchema()->renameTable($table, $newName),true)->execute();
 	}
 
 	/**
@@ -1344,7 +1383,8 @@ class CDbCommand extends CComponent
 	 */
 	public function dropTable($table)
 	{
-		return $this->setText($this->getConnection()->getSchema()->dropTable($table))->execute();
+        $this->getWriteConnection();
+        return $this->setText($this->_connection->getSchema()->dropTable($table),true)->execute();
 	}
 
 	/**
@@ -1355,9 +1395,10 @@ class CDbCommand extends CComponent
 	 */
 	public function truncateTable($table)
 	{
-		$schema=$this->getConnection()->getSchema();
-		$n=$this->setText($schema->truncateTable($table))->execute();
-		if(strncasecmp($this->getConnection()->getDriverName(),'sqlite',6)===0)
+        $this->getWriteConnection();
+        $schema=$this->_connection->getSchema();
+		$n=$this->setText($schema->truncateTable($table),true)->execute();
+		if(strncasecmp($this->_connection->getDriverName(),'sqlite',6)===0)
 			$schema->resetSequence($schema->getTable($table));
 		return $n;
 	}
@@ -1374,7 +1415,8 @@ class CDbCommand extends CComponent
 	 */
 	public function addColumn($table, $column, $type)
 	{
-		return $this->setText($this->getConnection()->getSchema()->addColumn($table, $column, $type))->execute();
+        $this->getWriteConnection();
+        return $this->setText($this->_connection->getSchema()->addColumn($table, $column, $type),true)->execute();
 	}
 
 	/**
@@ -1386,7 +1428,8 @@ class CDbCommand extends CComponent
 	 */
 	public function dropColumn($table, $column)
 	{
-		return $this->setText($this->getConnection()->getSchema()->dropColumn($table, $column))->execute();
+        $this->getWriteConnection();
+        return $this->setText($this->_connection->getSchema()->dropColumn($table, $column),true)->execute();
 	}
 
 	/**
@@ -1399,7 +1442,8 @@ class CDbCommand extends CComponent
 	 */
 	public function renameColumn($table, $name, $newName)
 	{
-		return $this->setText($this->getConnection()->getSchema()->renameColumn($table, $name, $newName))->execute();
+        $this->getWriteConnection();
+        return $this->setText($this->_connection->getSchema()->renameColumn($table, $name, $newName),true)->execute();
 	}
 
 	/**
@@ -1414,7 +1458,8 @@ class CDbCommand extends CComponent
 	 */
 	public function alterColumn($table, $column, $type)
 	{
-		return $this->setText($this->getConnection()->getSchema()->alterColumn($table, $column, $type))->execute();
+        $this->getWriteConnection();
+        return $this->setText($this->_connection->alterColumn($table, $column, $type),true)->execute();
 	}
 
 	/**
@@ -1432,7 +1477,8 @@ class CDbCommand extends CComponent
 	 */
 	public function addForeignKey($name, $table, $columns, $refTable, $refColumns, $delete=null, $update=null)
 	{
-		return $this->setText($this->getConnection()->getSchema()->addForeignKey($name, $table, $columns, $refTable, $refColumns, $delete, $update))->execute();
+        $this->getWriteConnection();
+        return $this->setText($this->_connection->getSchema()->addForeignKey($name, $table, $columns, $refTable, $refColumns, $delete, $update),true)->execute();
 	}
 
 	/**
@@ -1444,7 +1490,8 @@ class CDbCommand extends CComponent
 	 */
 	public function dropForeignKey($name, $table)
 	{
-		return $this->setText($this->getConnection()->getSchema()->dropForeignKey($name, $table))->execute();
+        $this->getWriteConnection();
+        return $this->setText($this->_connection->getSchema()->dropForeignKey($name, $table),true)->execute();
 	}
 
 	/**
@@ -1459,7 +1506,8 @@ class CDbCommand extends CComponent
 	 */
 	public function createIndex($name, $table, $column, $unique=false)
 	{
-		return $this->setText($this->getConnection()->getSchema()->createIndex($name, $table, $column, $unique))->execute();
+        $this->getWriteConnection();
+        return $this->setText( $this->_connection->getSchema()->createIndex($name, $table, $column, $unique),true)->execute();
 	}
 
 	/**
@@ -1471,7 +1519,8 @@ class CDbCommand extends CComponent
 	 */
 	public function dropIndex($name, $table)
 	{
-		return $this->setText($this->getConnection()->getSchema()->dropIndex($name, $table))->execute();
+        $this->getWriteConnection();
+        return $this->setText( $this->_connection->getSchema()->dropIndex($name, $table),true)->execute();
 	}
 
 	/**
@@ -1561,7 +1610,8 @@ class CDbCommand extends CComponent
 	 */
 	private function joinInternal($type, $table, $conditions='', $params=array())
 	{
-		if(strpos($table,'(')===false)
+        $this->getReadConnection();
+        if(strpos($table,'(')===false)
 		{
 			if(preg_match('/^(.*?)(?i:\s+as\s+|\s+)(.*)$/',$table,$matches))  // with alias
 				$table=$this->_connection->quoteTableName($matches[1]).' '.$this->_connection->quoteTableName($matches[2]);
@@ -1593,7 +1643,8 @@ class CDbCommand extends CComponent
 	 */
 	public function addPrimaryKey($name,$table,$columns)
 	{
-		return $this->setText($this->getConnection()->getSchema()->addPrimaryKey($name,$table,$columns))->execute();
+        $this->getWriteConnection();
+        return $this->setText($this->_connection->getSchema()->addPrimaryKey($name,$table,$columns),true)->execute();
 	}
 
 	/**
@@ -1605,6 +1656,35 @@ class CDbCommand extends CComponent
 	 */
 	public function dropPrimaryKey($name,$table)
 	{
-		return $this->setText($this->getConnection()->getSchema()->dropPrimaryKey($name,$table))->execute();
+        $this->getWriteConnection();
+        return $this->setText($this->_connection->getSchema()->dropPrimaryKey($name,$table),true)->execute();
 	}
+
+    /**
+     * @return CDbCommand
+     */
+    public function forceMaster()
+    {
+        $this->_forceMaster = true;
+        return $this;
+    }
+
+    /**
+     * @return CDbCommand
+     */
+    public function unsetForceMaster()
+    {
+        $this->_forceMaster = null;
+        return $this;
+    }
+    
+    protected function getReadConnection()
+    {
+        $this->_connection = $this->_pool->getReadConnection($this->_forceMaster);
+    }
+    
+    protected function getWriteConnection()
+    {
+        $this->getWriteConnection();
+    }
 }
