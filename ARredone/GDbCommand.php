@@ -3,12 +3,6 @@
 class GDbCommand extends CComponent
 {
     /**
-     * @var array the parameters (name=>value) to be bound to the current query.
-     * @since 1.1.6
-     */
-    public $params=array();
-
-    /**
      * @var IDbPool
      */
     protected  $_pool;
@@ -24,7 +18,7 @@ class GDbCommand extends CComponent
      */
     protected $_statement;
     protected $_paramLog=array();
-    protected $_query;
+
     protected $_fetchMode = array(PDO::FETCH_ASSOC);
 
     /**
@@ -39,7 +33,9 @@ class GDbCommand extends CComponent
      * in terms of the final query result.
      *
      * When passing the query as an array, the following properties are commonly set:
-     * {@link select}, {@link distinct}, {@link from}, {@link where}, {@link join},
+     * {
+     * @param bool $forceMaster
+     * @link select}, {@link distinct}, {@link from}, {@link where}, {@link join},
      * {@link group}, {@link having}, {@link order}, {@link limit}, {@link offset} and
      * {@link union}. Please refer to the setter of each of these properties for details
      * about valid property values. This feature has been available since version 1.1.6.
@@ -48,16 +44,11 @@ class GDbCommand extends CComponent
      * {@link setFetchMode FetchMode}. See {@link http://www.php.net/manual/en/function.PDOStatement-setFetchMode.php}
      * for more details.
      */
-    public function __construct(IDbPool $connectionPool,$query=null)
+    public function __construct(IDbPool $connectionPool,$query=null,$forceMaster=false)
     {
         $this->_pool = $connectionPool;
-        if(is_array($query))
-        {
-            foreach($query as $name=>$value)
-                $this->$name=$value;
-        }
-        else
-            $this->setText($query);
+        $this->_forceMaster = $forceMaster;
+        $this->setText($query);
     }
 
     /**
@@ -72,12 +63,11 @@ class GDbCommand extends CComponent
 
     /**
      * Set the default fetch mode for this statement
-     * @param mixed $mode fetch mode
      * @return CDbCommand
      * @see http://www.php.net/manual/en/function.PDOStatement-setFetchMode.php
      * @since 1.1.7
      */
-    public function setFetchMode($mode)
+    public function setFetchMode()
     {
         $params=func_get_args();
         $this->_fetchMode = $params;
@@ -95,10 +85,8 @@ class GDbCommand extends CComponent
     public function reset()
     {
         $this->_text=null;
-        $this->_query=null;
         $this->_statement=null;
         $this->_paramLog=array();
-        $this->params=array();
         return $this;
     }
 
@@ -107,8 +95,6 @@ class GDbCommand extends CComponent
      */
     public function getText()
     {
-        if($this->_text=='' && !empty($this->_query))
-            $this->setText($this->buildQuery($this->_query));
         return $this->_text;
     }
 
@@ -116,14 +102,10 @@ class GDbCommand extends CComponent
      * Specifies the SQL statement to be executed.
      * Any previous execution will be terminated or cancel.
      * @param string $value the SQL statement to be executed
-     * @param bool $forInner for inner queries
      * @return CDbCommand this command instance
      */
-    public function setText($value,$forInner = false)
+    public function setText($value)
     {
-        if (!$forInner)
-            $this->_connection = $this->_pool->getConnectionFromSql($value,$this->_forceMaster);
-
         if($this->_connection->tablePrefix!==null && $value!='')
             $this->_text=preg_replace('/{{(.*?)}}/',$this->_connection->tablePrefix.'\1',$value);
         else
@@ -158,6 +140,11 @@ class GDbCommand extends CComponent
      * @throws CDbException if CDbCommand failed to prepare the SQL statement
      */
     public function prepare()
+    {
+        $this->cancel();
+    }
+
+    protected function createStatement()
     {
         if($this->_statement==null)
         {
@@ -271,6 +258,7 @@ class GDbCommand extends CComponent
     public function execute($params=array())
     {
         $this->getWriteConnection();
+        $this->createStatement();
 
         if($this->_connection->enableParamLogging && ($pars=array_merge($this->_paramLog,$params))!==array())
         {
@@ -427,8 +415,7 @@ class GDbCommand extends CComponent
     private function queryInternal($method,$mode,$params=array())
     {
         $this->getReadConnection();
-
-        $params=array_merge($this->params,$params);
+        $this->createStatement();
 
         if($this->_connection->enableParamLogging && ($pars=array_merge($this->_paramLog,$params))!==array())
         {

@@ -3,19 +3,39 @@ class GDbPool extends CApplicationComponent implements IDbPool
 {
     public $connections;
 
-    public $defaultPoolMode;
+    public $pools;
 
-    private $pool = array();
+    /**
+     * @var CDbConnection[]
+     */
+    protected $poolConnections = array();
 
-    private $masterKey;
+    /**
+     * @var array IDbPool[]
+     */
+    protected $poolPools = array();
 
-    private $slaveKeys = array();
+    /**
+     * @var string $pool[$masterKey]=>CDbConnection
+     */
+    protected $masterKey;
+
+    /**
+     * @var array Same as master key, but array of slave keys in the pool.
+     */
+    protected $slaveKeys = array();
 
     public function init()
     {
         $this->analyzeConnections();
+
+        if (empty($this->connections))
+            $this->analyzePools();
     }
 
+    /**
+     * Sets master/slave keys for connections
+     */
     protected function analyzeConnections()
     {
         foreach ($this->connections as $key=>$connection)
@@ -25,8 +45,16 @@ class GDbPool extends CApplicationComponent implements IDbPool
 
     }
 
+    protected function analyzePools()
+    {
+        foreach ($this->pools as $key=>$pool)
+        {
 
-    public function getReadConnection($forceMaster = null)
+        }
+    }
+
+
+    public function getReadConnection($forceMaster = false)
     {
 
     }
@@ -36,32 +64,39 @@ class GDbPool extends CApplicationComponent implements IDbPool
 
     }
 
-    public function getConnectionFromSql($sql,$forceMaster = null)
+    /**
+     * Returns pool with connections.
+     * Overload getDb in AR, to get particular pool.
+     * @param string $name Name of the pool
+     * @return GDbPool
+     */
+    public function getPool($name)
     {
-        $sql=substr(ltrim($sql),0,10);
-        $sql=str_ireplace(array('SELECT','SHOW','DESCRIBE','PRAGMA'),'^O^',$sql);//^O^,magic smile
-        return strpos($sql,'^O^')===0?$this->getReadConnection($forceMaster):$this->getWriteConnection();
+
+    }
+
+    public function getPool_exapmle()
+    {
+        // for instance we have separate Replication pools
+        $users = $this->createCommand('SELECT * FROM users')->queryAll();
+        // but products are working with another replication ... so we get another pool
+        $products = $this->getPool('products')->createCommand('SELECT * FROM products')->queryAll();
     }
 
     /**
      * Creates a command for execution.
-     * @param mixed $query the DB query to be executed. This can be either a string representing a SQL statement,
-     * or an array representing different fragments of a SQL statement. Please refer to {@link CDbCommand::__construct}
-     * for more details about how to pass an array as the query. If this parameter is not given,
-     * you will have to call query builder methods of {@link CDbCommand} to build the DB query.
+     * @param mixed $query the DB query to be executed. This can be a string representing a SQL statement,
+     * @param bool $forceMaster use master for read commands
      * @return CDbCommand the DB command
      */
-    public function createCommand($query=null)
+    public function createCommand($query,$forceMaster = false)
     {
-        return new CDbCommand($this,$query);
+        return new CDbCommand($this,$query, $forceMaster);
     }
 
-    public function test()
+    public function createQueryBuilder()
     {
 
     }
-
-
-
 
 }

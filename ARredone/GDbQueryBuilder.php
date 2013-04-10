@@ -3,7 +3,76 @@
 class GDbQueryBuilder extends GDbCommand
 {
 
+    /**
+     * @var array the parameters (name=>value) to be bound to the current query.
+     * @since 1.1.6
+     */
+    public $params=array();
+
     private $_queryPieces = array();
+    private $_query;
+
+
+    public function __construct(IDbPool $connectionPool,$query=null)
+    {
+        $this->_pool = $connectionPool;
+        if(is_array($query))
+        {
+            foreach($query as $name=>$value)
+                $this->$name=$value;
+        }
+        else
+            $this->setText($query);
+    }
+
+    /**
+     * Cleans up the command and prepares for building a new query.
+     * This method is mainly used when a command object is being reused
+     * multiple times for building different queries.
+     * Calling this method will clean up all internal states of the command object.
+     * @return CDbCommand this command instance
+     * @since 1.1.6
+     */
+    public function reset()
+    {
+        $this->_text=null;
+        $this->_query=null;
+        $this->_statement=null;
+        $this->_paramLog=array();
+        $this->params=array();
+        return $this;
+    }
+
+    /**
+     * @return string the SQL statement to be executed
+     */
+    public function getText()
+    {
+        if($this->_text=='' && !empty($this->_query))
+            $this->setText($this->buildQuery($this->_query));
+        return $this->_text;
+    }
+
+
+    /**
+     * Specifies the SQL statement to be executed.
+     * Any previous execution will be terminated or cancel.
+     * @param string $value the SQL statement to be executed
+     * @param bool $forInner for inner queries
+     * @return CDbCommand this command instance
+     */
+    public function setText($value,$forInner = false)
+    {
+        if (!$forInner)
+            $this->_connection = $this->_pool->getConnectionFromSql($value,$this->_forceMaster);
+
+        if($this->_connection->tablePrefix!==null && $value!='')
+            $this->_text=preg_replace('/{{(.*?)}}/',$this->_connection->tablePrefix.'\1',$value);
+        else
+            $this->_text=$value;
+        $this->cancel();
+        return $this;
+    }
 
     /**
      * Builds a SQL SELECT statement from the given query specification.
@@ -93,10 +162,6 @@ class GDbQueryBuilder extends GDbCommand
         return $this;
     }
 
-    protected function selectInner()
-    {
-
-    }
 
     /**
      * Returns the SELECT part in the query.
@@ -1102,5 +1167,98 @@ class GDbQueryBuilder extends GDbCommand
     {
         $this->getWriteConnection();
         return $this->setText($this->_connection->getSchema()->dropPrimaryKey($name,$table),true)->execute();
+    }
+
+    /**
+     * @param string $method method of PDOStatement to be called
+     * @param mixed $mode parameters to be passed to the method
+     * @param array $params input parameters (name=>value) for the SQL execution. This is an alternative
+     * to {@link bindParam} and {@link bindValue}. If you have multiple input parameters, passing
+     * them in this way can improve the performance. Note that if you pass parameters in this way,
+     * you cannot bind parameters or values using {@link bindParam} or {@link bindValue}, and vice versa.
+     * Please also note that all values are treated as strings in this case, if you need them to be handled as
+     * their real data types, you have to use {@link bindParam} or {@link bindValue} instead.
+     * @throws CDbException if CDbCommand failed to execute the SQL statement
+     * @return mixed the method execution result
+     */
+    private function queryInternal($method,$mode,$params=array())
+    {
+        $this->getReadConnection();
+
+        $params=array_merge($this->params,$params);
+
+        if($this->_connection->enableParamLogging && ($pars=array_merge($this->_paramLog,$params))!==array())
+        {
+            $p=array();
+            foreach($pars as $name=>$value)
+                $p[$name]=$name.'='.var_export($value,true);
+            $par='. Bound with '.implode(', ',$p);
+        }
+        else
+            $par='';
+
+        Yii::trace('Querying SQL: '.$this->getText().$par,'system.db.CDbCommand');
+
+        if($this->_connection->queryCachingCount>0 && $method!==''
+           && $this->_connection->queryCachingDuration>0
+           && $this->_connection->queryCacheID!==false
+           && ($cache=Yii::app()->getComponent($this->_connection->queryCacheID))!==null)
+        {
+            $this->_connection->queryCachingCount--;
+            $cacheKey='yii:dbquery'.$this->_connection->connectionString.':'.$this->_connection->username;
+            $cacheKey.=':'.$this->getText().':'.serialize(array_merge($this->_paramLog,$params));
+            /** @var $cache CCache */
+            if(($result=$cache->get($cacheKey))!==false)
+            {
+                Yii::trace('Query result found in cache','system.db.CDbCommand');
+                return $result[0];
+            }
+        }
+
+        try
+        {
+            if($this->_connection->enableProfiling)
+                Yii::beginProfile('system.db.CDbCommand.query('.$this->getText().$par.')','system.db.CDbCommand.query');
+
+            $this->prepare();
+            if($params===array())
+                $this->_statement->execute();
+            else
+                $this->_statement->execute($params);
+
+            if($method==='')
+                $result=new CDbDataReader($this);
+            else
+            {
+                $mode=(array)$mode;
+                call_user_func_array(array($this->_statement, 'setFetchMode'), $mode);
+                $result=$this->_statement->$method();
+                $this->_statement->closeCursor();
+            }
+
+            if($this->_connection->enableProfiling)
+                Yii::endProfile('system.db.CDbCommand.query('.$this->getText().$par.')','system.db.CDbCommand.query');
+
+            if(isset($cache,$cacheKey))
+                $cache->set($cacheKey, array($result), $this->_connection->queryCachingDuration, $this->_connection->queryCachingDependency);
+
+            return $result;
+        }
+        catch(Exception $e)
+        {
+            if($this->_connection->enableProfiling)
+                Yii::endProfile('system.db.CDbCommand.query('.$this->getText().$par.')','system.db.CDbCommand.query');
+
+            $errorInfo=$e instanceof PDOException ? $e->errorInfo : null;
+            $message=$e->getMessage();
+            Yii::log(Yii::t('yii','CDbCommand::{method}() failed: {error}. The SQL statement executed was: {sql}.',
+                array('{method}'=>$method, '{error}'=>$message, '{sql}'=>$this->getText().$par)),CLogger::LEVEL_ERROR,'system.db.CDbCommand');
+
+            if(YII_DEBUG)
+                $message.='. The SQL statement executed was: '.$this->getText().$par;
+
+            throw new CDbException(Yii::t('yii','CDbCommand failed to execute the SQL statement: {error}',
+                array('{error}'=>$message)),(int)$e->getCode(),$errorInfo);
+        }
     }
 }

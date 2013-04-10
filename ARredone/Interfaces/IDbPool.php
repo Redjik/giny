@@ -11,7 +11,7 @@ interface IDbPool
 {
 
     /**
-     * @param $forceMaster bool
+     * @param bool $forceMaster
      * @return CDbConnection
      */
     public function getReadConnection($forceMaster);
@@ -22,10 +22,11 @@ interface IDbPool
     public function getWriteConnection();
 
     /**
-     * @param $sql string
-     * @param $forceMaster bool
-     * @return CDbConnection
+     * Returns pool with connections.
+     * Overload getDb in AR, to get particular pool.
+     * @param string $name Name of the pool
+     * @return IDbPool
      */
-    public function getConnectionFromSql($sql,$forceMaster);
+    public function getPool($name);
 
 }
