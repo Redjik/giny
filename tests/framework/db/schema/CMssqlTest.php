@@ -93,7 +93,7 @@ EOD;
 	public function testSchema()
 	{
 		$schema=$this->db->schema;
-		$this->assertTrue($schema instanceof GPoolSchema);
+		$this->assertTrue($schema instanceof CDbSchema);
 		$this->assertEquals($schema->dbConnection,$this->db);
 		$this->assertTrue($schema->commandBuilder instanceof CDbCommandBuilder);
 		$this->assertEquals('[posts]',$schema->quoteTableName('posts'));

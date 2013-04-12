@@ -3,13 +3,13 @@
 class GDbCommand extends CComponent
 {
     /**
-     * @var IDbPool
+     * @var IDbConnectionAccessObject
      */
     protected  $_pool;
     protected $_forceMaster;
 
     /**
-     * @var CDbConnection
+     * @var IDbConnection
      */
     protected $_connection;
     protected $_text;
@@ -23,7 +23,7 @@ class GDbCommand extends CComponent
 
     /**
      * Constructor.
-     * @param IDbPool $connectionPool the database connection
+     * @param IDbConnectionAccessObject $connectionPool the database connection
      * @param mixed $query the DB query to be executed. This can be either
      * a string representing a SQL statement, or an array whose name-value pairs
      * will be used to set the corresponding properties of the created command object.
@@ -44,7 +44,7 @@ class GDbCommand extends CComponent
      * {@link setFetchMode FetchMode}. See {@link http://www.php.net/manual/en/function.PDOStatement-setFetchMode.php}
      * for more details.
      */
-    public function __construct(IDbPool $connectionPool,$query=null,$forceMaster=false)
+    public function __construct(IDbConnectionAccessObject $connectionPool,$query=null,$forceMaster=false)
     {
         $this->_pool = $connectionPool;
         $this->_forceMaster = $forceMaster;
@@ -106,8 +106,8 @@ class GDbCommand extends CComponent
      */
     public function setText($value)
     {
-        if($this->_connection->tablePrefix!==null && $value!='')
-            $this->_text=preg_replace('/{{(.*?)}}/',$this->_connection->tablePrefix.'\1',$value);
+        if($this->_connection->getTablePrefix()!==null && $value!='')
+            $this->_text=preg_replace('/{{(.*?)}}/',$this->_connection->getTablePrefix().'\1',$value);
         else
             $this->_text=$value;
         $this->cancel();
@@ -260,7 +260,7 @@ class GDbCommand extends CComponent
         $this->getWriteConnection();
         $this->createStatement();
 
-        if($this->_connection->enableParamLogging && ($pars=array_merge($this->_paramLog,$params))!==array())
+        if($this->_connection->getEnableParamLogging() && ($pars=array_merge($this->_paramLog,$params))!==array())
         {
             $p=array();
             foreach($pars as $name=>$value)
@@ -272,7 +272,7 @@ class GDbCommand extends CComponent
         Yii::trace('Executing SQL: '.$this->getText().$par,'system.db.CDbCommand');
         try
         {
-            if($this->_connection->enableProfiling)
+            if($this->_connection->getEnableProfiling())
                 Yii::beginProfile('system.db.CDbCommand.execute('.$this->getText().$par.')','system.db.CDbCommand.execute');
 
             $this->prepare();
@@ -282,14 +282,14 @@ class GDbCommand extends CComponent
                 $this->_statement->execute($params);
             $n=$this->_statement->rowCount();
 
-            if($this->_connection->enableProfiling)
+            if($this->_connection->getEnableProfiling())
                 Yii::endProfile('system.db.CDbCommand.execute('.$this->getText().$par.')','system.db.CDbCommand.execute');
 
             return $n;
         }
         catch(Exception $e)
         {
-            if($this->_connection->enableProfiling)
+            if($this->_connection->getEnableProfiling())
                 Yii::endProfile('system.db.CDbCommand.execute('.$this->getText().$par.')','system.db.CDbCommand.execute');
 
             $errorInfo=$e instanceof PDOException ? $e->errorInfo : null;
@@ -417,7 +417,7 @@ class GDbCommand extends CComponent
         $this->getReadConnection();
         $this->createStatement();
 
-        if($this->_connection->enableParamLogging && ($pars=array_merge($this->_paramLog,$params))!==array())
+        if($this->_connection->getEnableParamLogging() && ($pars=array_merge($this->_paramLog,$params))!==array())
         {
             $p=array();
             foreach($pars as $name=>$value)
@@ -429,13 +429,13 @@ class GDbCommand extends CComponent
 
         Yii::trace('Querying SQL: '.$this->getText().$par,'system.db.CDbCommand');
 
-        if($this->_connection->queryCachingCount>0 && $method!==''
-           && $this->_connection->queryCachingDuration>0
-           && $this->_connection->queryCacheID!==false
-           && ($cache=Yii::app()->getComponent($this->_connection->queryCacheID))!==null)
+        if($this->_connection->getQueryCachingCount()>0 && $method!==''
+           && $this->_connection->getQueryCachingDuration()>0
+           && $this->_connection->getQueryCacheID()!==false
+           && ($cache=Yii::app()->getComponent($this->_connection->getQueryCacheID()))!==null)
         {
-            $this->_connection->queryCachingCount--;
-            $cacheKey='yii:dbquery'.$this->_connection->connectionString.':'.$this->_connection->username;
+            $this->_connection->setQueryCachingCount($this->_connection->getQueryCachingCount()-1);
+            $cacheKey='yii:dbquery'.$this->_connection->getConnectionString().':'.$this->_connection->getUserName();
             $cacheKey.=':'.$this->getText().':'.serialize(array_merge($this->_paramLog,$params));
             /** @var $cache CCache */
             if(($result=$cache->get($cacheKey))!==false)
@@ -447,7 +447,7 @@ class GDbCommand extends CComponent
 
         try
         {
-            if($this->_connection->enableProfiling)
+            if($this->_connection->getEnableProfiling())
                 Yii::beginProfile('system.db.CDbCommand.query('.$this->getText().$par.')','system.db.CDbCommand.query');
 
             $this->prepare();
@@ -466,17 +466,17 @@ class GDbCommand extends CComponent
                 $this->_statement->closeCursor();
             }
 
-            if($this->_connection->enableProfiling)
+            if($this->_connection->getEnableProfiling())
                 Yii::endProfile('system.db.CDbCommand.query('.$this->getText().$par.')','system.db.CDbCommand.query');
 
             if(isset($cache,$cacheKey))
-                $cache->set($cacheKey, array($result), $this->_connection->queryCachingDuration, $this->_connection->queryCachingDependency);
+                $cache->set($cacheKey, array($result), $this->_connection->getQueryCachingDuration(), $this->_connection->getQueryCachingDuration());
 
             return $result;
         }
         catch(Exception $e)
         {
-            if($this->_connection->enableProfiling)
+            if($this->_connection->getEnableProfiling())
                 Yii::endProfile('system.db.CDbCommand.query('.$this->getText().$par.')','system.db.CDbCommand.query');
 
             $errorInfo=$e instanceof PDOException ? $e->errorInfo : null;
@@ -508,7 +508,7 @@ class GDbCommand extends CComponent
      */
     public function unsetForceMaster()
     {
-        $this->_forceMaster = null;
+        $this->_forceMaster = false;
         return $this;
     }
 
@@ -519,6 +519,6 @@ class GDbCommand extends CComponent
 
     protected function getWriteConnection()
     {
-        $this->getWriteConnection();
+        $this->_connection = $this->_pool->getWriteConnection();
     }
 }

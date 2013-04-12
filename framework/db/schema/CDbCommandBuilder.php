@@ -12,38 +12,71 @@
  * CDbCommandBuilder provides basic methods to create query commands for tables.
  *
  * @property CDbConnection $dbConnection Database connection.
- * @property GPoolSchema $schema The schema for this command builder.
+ * @property CDbSchema $schema The schema for this command builder.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @package system.db.schema
  * @since 1.0
  */
-class CDbCommandBuilder extends CComponent
+
+abstract class CDbCommandBuilder extends CComponent
 {
 	const PARAM_PREFIX=':yp';
 
-	private $_schema;
-	private $_connection;
+    public static $initiatedBuilders = array();
 
-	/**
-	 * @param GPoolSchema $schema the schema for this command builder
-	 */
-	public function __construct($schema)
+    /**
+     * @var CDbSchema
+     */
+    private $_schema;
+
+    /**
+     * @var IDbConnectionAccessObject
+     */
+    private $_pool;
+
+    /**
+     * @param CDbSchema $schema the schema for this command builder
+     * @param IDbConnectionAccessObject $pool
+     */
+	public function __construct(CDbSchema $schema, IDbConnectionAccessObject $pool)
 	{
-		$this->_schema=$schema;
-		$this->_connection=$schema->getDbConnection();
+        $this->setSettings($schema,$pool);
 	}
 
-	/**
-	 * @return CDbConnection database connection.
-	 */
-	public function getDbConnection()
-	{
-		return $this->_connection;
-	}
+    /**
+     * @param CDbSchema $schema
+     * @param IDbConnectionAccessObject $pool
+     * @return CDbCommandBuilder
+     */
+    public static function factory(CDbSchema $schema, IDbConnectionAccessObject $pool)
+    {
+        if (isset(self::$initiatedBuilders[$schema->getDbType()]))
+        {
+            /** @var $cDbCommandBuilderObj CDbCommandBuilder */
+            $cDbCommandBuilderObj = self::$initiatedBuilders[$schema->getDbType()];
+            $cDbCommandBuilderObj->setSettings($schema,$pool);
+            return self::$initiatedBuilders[$schema->getDbType()];
+        }
+
+        $className = $schema->getDbType().'CommandBuilder';
+        /** @var $className CDbCommandBuilder */
+        self::$initiatedBuilders[$schema->getDbType()] = new $className($schema,$pool);
+        return self::$initiatedBuilders[$schema->getDbType()];
+    }
+
+    /**
+     * @param CDbSchema $schema
+     * @param IDbConnectionAccessObject $pool
+     */
+    public function setSettings(CDbSchema $schema, IDbConnectionAccessObject $pool)
+    {
+        $this->_schema=$schema;
+        $this->_pool = $pool;
+    }
 
 	/**
-	 * @return GPoolSchema the schema for this command builder.
+	 * @return CDbSchema the schema for this command builder.
 	 */
 	public function getSchema()
 	{
@@ -59,7 +92,7 @@ class CDbCommandBuilder extends CComponent
 	{
 		$this->ensureTable($table);
 		if($table->sequenceName!==null)
-			return $this->_connection->getLastInsertID($table->sequenceName);
+			return $this->_pool->getWriteConnection()->getLastInsertID($table->sequenceName);
 		else
 			return null;
 	}
@@ -69,7 +102,7 @@ class CDbCommandBuilder extends CComponent
 	 * @param mixed $table the table schema ({@link CDbTableSchema}) or the table name (string).
 	 * @param CDbCriteria $criteria the query criteria
 	 * @param string $alias the alias name of the primary table. Defaults to 't'.
-	 * @return CDbCommand query command.
+	 * @return GDbCommand query command.
 	 */
 	public function createFindCommand($table,$criteria,$alias='t')
 	{
@@ -96,7 +129,7 @@ class CDbCommandBuilder extends CComponent
 		$sql=$this->applyHaving($sql,$criteria->having);
 		$sql=$this->applyOrder($sql,$criteria->order);
 		$sql=$this->applyLimit($sql,$criteria->limit,$criteria->offset);
-		$command=$this->_connection->createCommand($sql);
+		$command=$this->_pool->createCommand($sql);
 		$this->bindValues($command,$criteria->params);
 		return $command;
 	}
@@ -106,7 +139,7 @@ class CDbCommandBuilder extends CComponent
 	 * @param mixed $table the table schema ({@link CDbTableSchema}) or the table name (string).
 	 * @param CDbCriteria $criteria the query criteria
 	 * @param string $alias the alias name of the primary table. Defaults to 't'.
-	 * @return CDbCommand query command.
+	 * @return GDbCommand query command.
 	 */
 	public function createCountCommand($table,$criteria,$alias='t')
 	{
@@ -173,7 +206,7 @@ class CDbCommandBuilder extends CComponent
 				unset($criteria->params[$param]);
 		}
 
-		$command=$this->_connection->createCommand($sql);
+		$command=$this->_pool->createCommand($sql);
 		$this->bindValues($command,$criteria->params);
 		return $command;
 	}
@@ -182,7 +215,7 @@ class CDbCommandBuilder extends CComponent
 	 * Creates a DELETE command.
 	 * @param mixed $table the table schema ({@link CDbTableSchema}) or the table name (string).
 	 * @param CDbCriteria $criteria the query criteria
-	 * @return CDbCommand delete command.
+	 * @return GDbCommand delete command.
 	 */
 	public function createDeleteCommand($table,$criteria)
 	{
@@ -194,7 +227,7 @@ class CDbCommandBuilder extends CComponent
 		$sql=$this->applyHaving($sql,$criteria->having);
 		$sql=$this->applyOrder($sql,$criteria->order);
 		$sql=$this->applyLimit($sql,$criteria->limit,$criteria->offset);
-		$command=$this->_connection->createCommand($sql);
+		$command=$this->_pool->createCommand($sql);
 		$this->bindValues($command,$criteria->params);
 		return $command;
 	}
@@ -203,7 +236,7 @@ class CDbCommandBuilder extends CComponent
 	 * Creates an INSERT command.
 	 * @param mixed $table the table schema ({@link CDbTableSchema}) or the table name (string).
 	 * @param array $data data to be inserted (column name=>column value). If a key is not a valid column name, the corresponding value will be ignored.
-	 * @return CDbCommand insert command
+	 * @return GDbCommand insert command
 	 */
 	public function createInsertCommand($table,$data)
 	{
@@ -241,7 +274,7 @@ class CDbCommandBuilder extends CComponent
 			}
 		}
 		$sql="INSERT INTO {$table->rawName} (".implode(', ',$fields).') VALUES ('.implode(', ',$placeholders).')';
-		$command=$this->_connection->createCommand($sql);
+		$command=$this->_pool->createCommand($sql);
 
 		foreach($values as $name=>$value)
 			$command->bindValue($name,$value);
@@ -255,7 +288,7 @@ class CDbCommandBuilder extends CComponent
 	 * @param array $data list of columns to be updated (name=>value)
 	 * @param CDbCriteria $criteria the query criteria
 	 * @throws CDbException if no columns are being updated for the given table
-	 * @return CDbCommand update command.
+	 * @return GDbCommand update command.
 	 */
 	public function createUpdateCommand($table,$data,$criteria)
 	{
@@ -296,7 +329,7 @@ class CDbCommandBuilder extends CComponent
 		$sql=$this->applyOrder($sql,$criteria->order);
 		$sql=$this->applyLimit($sql,$criteria->limit,$criteria->offset);
 
-		$command=$this->_connection->createCommand($sql);
+		$command=$this->_pool->createCommand($sql);
 		$this->bindValues($command,array_merge($values,$criteria->params));
 
 		return $command;
@@ -308,7 +341,7 @@ class CDbCommandBuilder extends CComponent
 	 * @param array $counters counters to be updated (counter increments/decrements indexed by column names.)
 	 * @param CDbCriteria $criteria the query criteria
 	 * @throws CDbException if no columns are being updated for the given table
-	 * @return CDbCommand the created command
+	 * @return GDbCommand the created command
 	 */
 	public function createUpdateCounterCommand($table,$counters,$criteria)
 	{
@@ -332,7 +365,7 @@ class CDbCommandBuilder extends CComponent
 			$sql=$this->applyCondition($sql,$criteria->condition);
 			$sql=$this->applyOrder($sql,$criteria->order);
 			$sql=$this->applyLimit($sql,$criteria->limit,$criteria->offset);
-			$command=$this->_connection->createCommand($sql);
+			$command=$this->_pool->createCommand($sql);
 			$this->bindValues($command,$criteria->params);
 			return $command;
 		}
@@ -345,101 +378,86 @@ class CDbCommandBuilder extends CComponent
 	 * Creates a command based on a given SQL statement.
 	 * @param string $sql the explicitly specified SQL statement
 	 * @param array $params parameters that will be bound to the SQL statement
-	 * @return CDbCommand the created command
+	 * @return GDbCommand the created command
 	 */
 	public function createSqlCommand($sql,$params=array())
 	{
-		$command=$this->_connection->createCommand($sql);
+		$command=$this->_pool->createCommand($sql);
 		$this->bindValues($command,$params);
 		return $command;
 	}
 
-	/**
-	 * Alters the SQL to apply JOIN clause.
-	 * @param string $sql the SQL statement to be altered
-	 * @param string $join the JOIN clause (starting with join type, such as INNER JOIN)
-	 * @return string the altered SQL statement
-	 */
-	public function applyJoin($sql,$join)
-	{
-		if($join!='')
-			return $sql.' '.$join;
-		else
-			return $sql;
-	}
+    /**
+     * Alters the SQL to apply JOIN clause.
+     * @param string $sql the SQL statement to be altered
+     * @param string $join the JOIN clause (starting with join type, such as INNER JOIN)
+     * @return string the altered SQL statement
+     */
+    public function applyJoin($sql,$join)
+    {
+        return GDbQueryHelper::applyJoin($sql,$join);
+    }
 
-	/**
-	 * Alters the SQL to apply WHERE clause.
-	 * @param string $sql the SQL statement without WHERE clause
-	 * @param string $condition the WHERE clause (without WHERE keyword)
-	 * @return string the altered SQL statement
-	 */
-	public function applyCondition($sql,$condition)
-	{
-		if($condition!='')
-			return $sql.' WHERE '.$condition;
-		else
-			return $sql;
-	}
+    /**
+     * Alters the SQL to apply WHERE clause.
+     * @param string $sql the SQL statement without WHERE clause
+     * @param string $condition the WHERE clause (without WHERE keyword)
+     * @return string the altered SQL statement
+     */
+    public function applyCondition($sql,$condition)
+    {
+        return GDbQueryHelper::applyCondition($sql,$condition);
+    }
 
-	/**
-	 * Alters the SQL to apply ORDER BY.
-	 * @param string $sql SQL statement without ORDER BY.
-	 * @param string $orderBy column ordering
-	 * @return string modified SQL applied with ORDER BY.
-	 */
-	public function applyOrder($sql,$orderBy)
-	{
-		if($orderBy!='')
-			return $sql.' ORDER BY '.$orderBy;
-		else
-			return $sql;
-	}
+    /**
+     * Alters the SQL to apply ORDER BY.
+     * @param string $sql SQL statement without ORDER BY.
+     * @param string $orderBy column ordering
+     * @return string modified SQL applied with ORDER BY.
+     */
+    public function applyOrder($sql,$orderBy)
+    {
+        return GDbQueryHelper::applyOrder($sql,$orderBy);
+    }
 
-	/**
-	 * Alters the SQL to apply LIMIT and OFFSET.
-	 * Default implementation is applicable for PostgreSQL, MySQL and SQLite.
-	 * @param string $sql SQL query string without LIMIT and OFFSET.
-	 * @param integer $limit maximum number of rows, -1 to ignore limit.
-	 * @param integer $offset row offset, -1 to ignore offset.
-	 * @return string SQL with LIMIT and OFFSET
-	 */
-	public function applyLimit($sql,$limit,$offset)
-	{
-		return GDbQueryHelper::applyLimit($sql,$limit,$offset);
-	}
+    /**
+     * Alters the SQL to apply LIMIT and OFFSET.
+     * Default implementation is applicable for PostgreSQL, MySQL and SQLite.
+     * @param string $sql SQL query string without LIMIT and OFFSET.
+     * @param integer $limit maximum number of rows, -1 to ignore limit.
+     * @param integer $offset row offset, -1 to ignore offset.
+     * @return string SQL with LIMIT and OFFSET
+     */
+    public function applyLimit($sql,$limit,$offset)
+    {
+        return GDbQueryHelper::applyLimit($sql,$limit,$offset);
+    }
 
-	/**
-	 * Alters the SQL to apply GROUP BY.
-	 * @param string $sql SQL query string without GROUP BY.
-	 * @param string $group GROUP BY
-	 * @return string SQL with GROUP BY.
-	 */
-	public function applyGroup($sql,$group)
-	{
-		if($group!='')
-			return $sql.' GROUP BY '.$group;
-		else
-			return $sql;
-	}
+    /**
+     * Alters the SQL to apply GROUP BY.
+     * @param string $sql SQL query string without GROUP BY.
+     * @param string $group GROUP BY
+     * @return string SQL with GROUP BY.
+     */
+    public function applyGroup($sql,$group)
+    {
+        return GDbQueryHelper::applyHaving($sql,$group);
+    }
 
-	/**
-	 * Alters the SQL to apply HAVING.
-	 * @param string $sql SQL query string without HAVING
-	 * @param string $having HAVING
-	 * @return string SQL with HAVING
-	 */
-	public function applyHaving($sql,$having)
-	{
-		if($having!='')
-			return $sql.' HAVING '.$having;
-		else
-			return $sql;
-	}
+    /**
+     * Alters the SQL to apply HAVING.
+     * @param string $sql SQL query string without HAVING
+     * @param string $having HAVING
+     * @return string SQL with HAVING
+     */
+    public function applyHaving($sql,$having)
+    {
+        return GDbQueryHelper::applyHaving($sql,$having);
+    }
 
 	/**
 	 * Binds parameter values for an SQL command.
-	 * @param CDbCommand $command database command
+	 * @param GDbCommand $command database command
 	 * @param array $values values for binding (integer-indexed array for question mark placeholders, string-indexed array for named placeholders)
 	 */
 	public function bindValues($command, $values)
@@ -598,48 +616,6 @@ class CDbCommandBuilder extends CComponent
 				$criteria->condition=implode(' AND ',$conditions);
 		}
 		return $criteria;
-	}
-
-	/**
-	 * Generates the expression for searching the specified keywords within a list of columns.
-	 * The search expression is generated using the 'LIKE' SQL syntax.
-	 * Every word in the keywords must be present and appear in at least one of the columns.
-	 * @param mixed $table the table schema ({@link CDbTableSchema}) or the table name (string).
-	 * @param array $columns list of column names for potential search condition.
-	 * @param mixed $keywords search keywords. This can be either a string with space-separated keywords or an array of keywords.
-	 * @param string $prefix optional column prefix (with dot at the end). If null, the table name will be used as the prefix.
-	 * @param boolean $caseSensitive whether the search is case-sensitive. Defaults to true.
-	 * @throws CDbException if specified column is not found in given table
-	 * @return string SQL search condition matching on a set of columns. An empty string is returned
-	 * if either the column array or the keywords are empty.
-	 */
-	public function createSearchCondition($table,$columns,$keywords,$prefix=null,$caseSensitive=true)
-	{
-		$this->ensureTable($table);
-		if(!is_array($keywords))
-			$keywords=preg_split('/\s+/u',$keywords,-1,PREG_SPLIT_NO_EMPTY);
-		if(empty($keywords))
-			return '';
-		if($prefix===null)
-			$prefix=$table->rawName.'.';
-		$conditions=array();
-		foreach($columns as $name)
-		{
-			if(($column=$table->getColumn($name))===null)
-				throw new CDbException(Yii::t('yii','Table "{table}" does not have a column named "{column}".',
-					array('{table}'=>$table->name,'{column}'=>$name)));
-			$condition=array();
-			foreach($keywords as $keyword)
-			{
-				$keyword='%'.strtr($keyword,array('%'=>'\%', '_'=>'\_')).'%';
-				if($caseSensitive)
-					$condition[]=$prefix.$column->rawName.' LIKE '.$this->_connection->quoteValue('%'.$keyword.'%');
-				else
-					$condition[]='LOWER('.$prefix.$column->rawName.') LIKE LOWER('.$this->_connection->quoteValue('%'.$keyword.'%').')';
-			}
-			$conditions[]=implode(' AND ',$condition);
-		}
-		return '('.implode(' OR ',$conditions).')';
 	}
 
 	/**

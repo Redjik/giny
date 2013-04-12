@@ -81,7 +81,7 @@
  * @property boolean $active Whether the DB connection is established.
  * @property PDO $pdoInstance The PDO instance, null if the connection is not established yet.
  * @property CDbTransaction $currentTransaction The currently active transaction. Null if no active transaction.
- * @property GPoolSchema $schema The database schema for the current connection.
+ * @property CDbSchema $schema The database schema for the current connection.
  * @property CDbCommandBuilder $commandBuilder The command builder.
  * @property string $lastInsertID The row ID of the last row inserted, or the last value retrieved from the sequence object.
  * @property mixed $columnCase The case of the column names.
@@ -103,9 +103,13 @@
  * @package system.db
  * @since 1.0
  */
-class CDbConnection extends CApplicationComponent
+class CDbConnection extends CApplicationComponent implements IDbConnection
 {
-	/**
+	const TYPE_MASTER = 'master';
+
+    const TYPE_SLAVE = 'slave';
+
+    /**
 	 * @var string The Data Source Name, or DSN, contains the information required to connect to the database.
 	 * @see http://www.php.net/manual/en/function.PDO-construct.php
 	 *
@@ -217,6 +221,8 @@ class CDbConnection extends CApplicationComponent
 	 */
 	public $pdoClass = 'PDO';
 
+    public $type = self::TYPE_MASTER;
+
 	private $_attributes=array();
 	private $_active=false;
 	private $_pdo;
@@ -250,6 +256,91 @@ class CDbConnection extends CApplicationComponent
 		$this->close();
 		return array_keys(get_object_vars($this));
 	}
+
+    /**
+     * @return string
+     */
+    public function getConnectionString()
+    {
+        return $this->connectionString;
+    }
+
+    public function getUserName()
+    {
+        return $this->username;
+    }
+
+    /**
+     * @return string
+     */
+    public function getPassword()
+    {
+        return $this->password;
+    }
+
+    /**
+     * @return int
+     */
+    public function getQueryCachingDuration()
+    {
+        return $this->queryCachingDuration;
+    }
+
+    /**
+     * @param int $queryCachingDuration
+     */
+    public function setQueryCachingDuration($queryCachingDuration)
+    {
+        $this->queryCachingDuration = $queryCachingDuration;
+    }
+
+    /**
+     * @return int
+     */
+    public function getQueryCachingCount()
+    {
+        return $this->queryCachingCount;
+    }
+
+    /**
+     * @param int $queryCachingCount
+     */
+    public function setQueryCachingCount($queryCachingCount)
+    {
+        $this->queryCachingCount = $queryCachingCount;
+    }
+
+    /**
+     * @return string
+     */
+    public function getQueryCacheID()
+    {
+        return $this->queryCacheID;
+    }
+
+    /**
+     * @return string
+     */
+    public function getTablePrefix()
+    {
+        return $this->tablePrefix;
+    }
+
+    /**
+     * @return boolean
+     */
+    public function getEnableParamLogging()
+    {
+        return $this->enableParamLogging;
+    }
+
+    /**
+     * @return boolean
+     */
+    public function getEnableProfiling()
+    {
+        return $this->enableProfiling;
+    }
 
 	/**
 	 * Returns a list of available PDO drivers.
@@ -333,7 +424,8 @@ class CDbConnection extends CApplicationComponent
 	{
 		if($this->_pdo===null)
 		{
-			if(empty($this->connectionString))
+			$connectionString = $this->getConnectionString();
+            if(empty($connectionString))
 				throw new CDbException('CDbConnection.connectionString cannot be empty.');
 			try
 			{
@@ -380,9 +472,9 @@ class CDbConnection extends CApplicationComponent
 	protected function createPdoInstance()
 	{
 		$pdoClass=$this->pdoClass;
-		if(($pos=strpos($this->connectionString,':'))!==false)
+		if(($pos=strpos($this->getConnectionString(),':'))!==false)
 		{
-			$driver=strtolower(substr($this->connectionString,0,$pos));
+			$driver=strtolower(substr($this->getConnectionString(),0,$pos));
 			if($driver==='mssql' || $driver==='dblib')
 				$pdoClass='CMssqlPdoAdapter';
 			elseif($driver==='sqlsrv')
@@ -393,7 +485,7 @@ class CDbConnection extends CApplicationComponent
 			throw new CDbException(Yii::t('yii','CDbConnection is unable to find PDO class "{className}". Make sure PDO is installed correctly.',
 				array('{className}'=>$pdoClass)));
 
-		@$instance=new $pdoClass($this->connectionString,$this->username,$this->password,$this->_attributes);
+		@$instance=new $pdoClass($this->getConnectionString(),$this->getUserName(),$this->getPassword(),$this->_attributes);
 
 		if(!$instance)
 			throw new CDbException(Yii::t('yii','CDbConnection failed to open the DB connection.'));
@@ -456,7 +548,7 @@ class CDbConnection extends CApplicationComponent
 	{
 		Yii::trace('Starting transaction','system.db.CDbConnection');
 		$this->setActive(true);
-		$this->_pdo->beginTransaction();
+		$this->getPdoInstance()->beginTransaction();
 		return $this->_transaction=new CDbTransaction($this);
 	}
 
@@ -469,7 +561,7 @@ class CDbConnection extends CApplicationComponent
 	public function getLastInsertID($sequenceName='')
 	{
 		$this->setActive(true);
-		return $this->_pdo->lastInsertId($sequenceName);
+		return $this->getPdoInstance()->lastInsertId($sequenceName);
 	}
 
 	/**
@@ -484,7 +576,7 @@ class CDbConnection extends CApplicationComponent
 			return $str;
 
 		$this->setActive(true);
-		if(($value=$this->_pdo->quote($str))!==false)
+		if(($value=$this->getPdoInstance()->quote($str))!==false)
 			return $value;
 		else  // the driver doesn't support quote (e.g. oci)
 			return "'" . addcslashes(str_replace("'", "''", $str), "\000\n\r\\\032") . "'";
@@ -636,7 +728,7 @@ class CDbConnection extends CApplicationComponent
 	public function getAttribute($name)
 	{
 		$this->setActive(true);
-		return $this->_pdo->getAttribute($name);
+		return $this->getPdoInstance()->getAttribute($name);
 	}
 
 	/**
@@ -647,8 +739,8 @@ class CDbConnection extends CApplicationComponent
 	 */
 	public function setAttribute($name,$value)
 	{
-		if($this->_pdo instanceof PDO)
-			$this->_pdo->setAttribute($name,$value);
+		if($this->getPdoInstance() instanceof PDO)
+			$this->getPdoInstance()->setAttribute($name,$value);
 		else
 			$this->_attributes[$name]=$value;
 	}

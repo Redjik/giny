@@ -16,7 +16,7 @@
  * @author Ricardo Grana <rickgrana@yahoo.com.br>
  * @package system.db.schema.oci
  */
-class COciSchema extends GPoolSchema
+class COciSchema extends CDbSchema
 {
 	private $_defaultSchema = '';
 
@@ -65,16 +65,6 @@ class COciSchema extends GPoolSchema
 	}
 
 	/**
-	 * Creates a command builder for the database.
-	 * This method may be overridden by child classes to create a DBMS-specific command builder.
-	 * @return CDbCommandBuilder command builder instance
-	 */
-	protected function createCommandBuilder()
-	{
-		return new COciCommandBuilder($this);
-	}
-
-	/**
      * @param string $schema default schema.
      */
     public function setDefaultSchema($schema)
@@ -89,7 +79,7 @@ class COciSchema extends GPoolSchema
     {
 		if (!strlen($this->_defaultSchema))
 		{
-			$this->setDefaultSchema(strtoupper($this->getDbConnection()->username));
+			$this->setDefaultSchema(strtoupper($this->getDbConnection()->getUserName()));
 		}
 
 		return $this->_defaultSchema;
@@ -192,7 +182,7 @@ WHERE
 ORDER by a.column_id
 EOD;
 
-		$command=$this->getDbConnection()->createCommand($sql);
+		$command=$this->getPool()->createCommand($sql);
 
 		if(($columns=$command->queryAll())===array()){
 			return false;
@@ -256,7 +246,7 @@ EOD;
            and D.constraint_type <> 'P'
         order by d.constraint_name, c.position
 EOD;
-		$command=$this->getDbConnection()->createCommand($sql);
+		$command=$this->getPool()->createCommand($sql);
 		foreach($command->queryAll() as $row)
 		{
 			if($row['CONSTRAINT_TYPE']==='R')   // foreign key
@@ -283,7 +273,7 @@ EOD;
 			$sql=<<<EOD
 SELECT table_name, '{$schema}' as table_schema FROM user_tables
 EOD;
-			$command=$this->getDbConnection()->createCommand($sql);
+			$command=$this->getPool()->createCommand($sql);
 		}
 		else
 		{
@@ -291,7 +281,7 @@ EOD;
 SELECT object_name as table_name, owner as table_schema FROM all_objects
 WHERE object_type = 'TABLE' AND owner=:schema
 EOD;
-			$command=$this->getDbConnection()->createCommand($sql);
+			$command=$this->getPool()->createCommand($sql);
 			$command->bindParam(':schema',$schema);
 		}
 
@@ -364,7 +354,7 @@ EOD;
 		$seq = $table->name."_SEQ";
 		if($table->sequenceName!==null)
 		{
-			$this->getDbConnection()->createCommand("DROP SEQUENCE ".$seq)->execute();
+			$this->getPool()->createCommand("DROP SEQUENCE ".$seq)->execute();
 
 			$createSequenceSql = <<< SQL
 create sequence $seq
@@ -373,7 +363,7 @@ increment by 1
 nomaxvalue
 nocache
 SQL;
-			$this->getDbConnection()->createCommand($createSequenceSql)->execute();
+			$this->getPool()->createCommand($createSequenceSql)->execute();
 		}
 	}
 }

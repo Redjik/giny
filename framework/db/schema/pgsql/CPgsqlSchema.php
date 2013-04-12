@@ -15,7 +15,7 @@
  * @package system.db.schema.pgsql
  * @since 1.0
  */
-class CPgsqlSchema extends GPoolSchema
+class CPgsqlSchema extends CDbSchema
 {
 	const DEFAULT_SCHEMA='public';
 
@@ -73,7 +73,7 @@ class CPgsqlSchema extends GPoolSchema
 				$value="(SELECT COALESCE(MAX(\"{$table->primaryKey}\"),0) FROM {$table->rawName}) + 1";
 			else
 				$value=(int)$value;
-			$this->getDbConnection()->createCommand("SELECT SETVAL('$seq', $value, false)")->execute();
+			$this->getPool()->createCommand("SELECT SETVAL('$seq', $value, false)")->execute();
 		}
 	}
 
@@ -87,7 +87,7 @@ class CPgsqlSchema extends GPoolSchema
 	{
 		$enable=$check ? 'ENABLE' : 'DISABLE';
 		$tableNames=$this->getTableNames($schema);
-		$db=$this->getDbConnection();
+		$db=$this->getPool();
 		foreach($tableNames as $tableName)
 		{
 			$tableName='"'.$tableName.'"';
@@ -170,7 +170,7 @@ WHERE a.attnum > 0 AND NOT a.attisdropped
 		AND relnamespace = (SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = :schema))
 ORDER BY a.attnum
 EOD;
-		$command=$this->getDbConnection()->createCommand($sql);
+		$command=$this->getPool()->createCommand($sql);
 		$command->bindValue(':table',$table->name);
 		$command->bindValue(':schema',$table->schemaName);
 
@@ -262,7 +262,7 @@ WHERE relid = (SELECT oid FROM pg_catalog.pg_class WHERE relname=:table
 	AND relnamespace = (SELECT oid FROM pg_catalog.pg_namespace
 	WHERE nspname=:schema))
 EOD;
-		$command=$this->getDbConnection()->createCommand($sql);
+		$command=$this->getPool()->createCommand($sql);
 		$command->bindValue(':table',$table->name);
 		$command->bindValue(':schema',$table->schemaName);
 		foreach($command->queryAll() as $row)
@@ -291,7 +291,7 @@ SELECT attnum, attname FROM pg_catalog.pg_attribute WHERE
 	)
 	AND attnum IN ({$indices})
 EOD;
-		$command=$this->getDbConnection()->createCommand($sql);
+		$command=$this->getPool()->createCommand($sql);
 		$command->bindValue(':table',$table->name);
 		$command->bindValue(':schema',$table->schemaName);
 		foreach($command->queryAll() as $row)
@@ -348,7 +348,7 @@ EOD;
 SELECT table_name, table_schema FROM information_schema.tables
 WHERE table_schema=:schema AND table_type='BASE TABLE'
 EOD;
-		$command=$this->getDbConnection()->createCommand($sql);
+		$command=$this->getPool()->createCommand($sql);
 		$command->bindParam(':schema',$schema);
 		$rows=$command->queryAll();
 		$names=array();

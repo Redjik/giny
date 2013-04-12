@@ -19,7 +19,6 @@
  * This criteria is mainly used by {@link scopes named scope} feature to accumulate
  * different criteria specifications.
  * @property CActiveRecordMetaData $metaData The meta for this AR class.
- * @property CDbConnection $dbConnection The database connection used by active record.
  * @property CDbTableSchema $tableSchema The metadata of the table that this AR belongs to.
  * @property CDbCommandBuilder $commandBuilder The command builder used by this AR.
  * @property array $attributes Attribute values indexed by attribute names.
@@ -37,7 +36,7 @@
  * @package system.db.ar
  * @since 1.0
  */
-abstract class CActiveRecord extends CModel
+abstract class CActiveRecord extends CModel implements IActiveRecord
 {
 	const BELONGS_TO='CBelongsToRelation';
 	const HAS_ONE='CHasOneRelation';
@@ -89,11 +88,18 @@ abstract class CActiveRecord extends CModel
 	}
 
     /**
-     * @return GDbPool
+     * @return IDbConnectionAccessObject
      */
-    protected function getPool()
+    public function getPool()
     {
         return Yii::app()->getDb();
+    }
+
+    public function getSchema()
+    {
+        /** @var $pool GDbPool */
+        $pool = $this->getPool();
+        return $pool->getSchema();
     }
 
 	/**
@@ -152,7 +158,8 @@ abstract class CActiveRecord extends CModel
 	 * This method is overridden so that AR attributes can be accessed like properties.
 	 * @param string $name property name
 	 * @param mixed $value property value
-	 */
+     * @return mixed|void
+     */
 	public function __set($name,$value)
 	{
 		if($this->setAttribute($name,$value)===false)
@@ -190,7 +197,8 @@ abstract class CActiveRecord extends CModel
 	 * This method overrides the parent implementation by clearing
 	 * the specified attribute value.
 	 * @param string $name the property name or the event name
-	 */
+     * @return mixed|void
+     */
 	public function __unset($name)
 	{
 		if(isset($this->getMetaData()->columns[$name]))
@@ -257,7 +265,8 @@ abstract class CActiveRecord extends CModel
 		if($this->getIsNewRecord() && !$refresh && ($relation instanceof CHasOneRelation || $relation instanceof CHasManyRelation))
 			return $relation instanceof CHasOneRelation ? null : array();
 
-		if($params!==array()) // dynamic query
+		$exists = $save = false;
+        if($params!==array()) // dynamic query
 		{
 			$exists=isset($this->_related[$name]) || array_key_exists($name,$this->_related);
 			if($exists)
@@ -365,22 +374,23 @@ abstract class CActiveRecord extends CModel
 		return $this;
 	}
 
-	/**
-	 * Returns the static model of the specified AR class.
-	 * The model returned is a static instance of the AR class.
-	 * It is provided for invoking class-level methods (something similar to static class methods.)
-	 *
-	 * EVERY derived AR class must override this method as follows,
-	 * <pre>
-	 * public static function model($className=__CLASS__)
-	 * {
-	 *     return parent::model($className);
-	 * }
-	 * </pre>
-	 *
-	 * @param string $className active record class name.
-	 * @return CActiveRecord active record model instance.
-	 */
+    /**
+     * Returns the static model of the specified AR class.
+     * The model returned is a static instance of the AR class.
+     * It is provided for invoking class-level methods (something similar to static class methods.)
+     *
+     * EVERY derived AR class must override this method as follows,
+     * <pre>
+     * public static function model($className=__CLASS__)
+     * {
+     *     return parent::model($className);
+     * }
+     * </pre>
+     *
+     * @param string $className active record class name.
+     * @throws CDbException
+     * @return CActiveRecord active record model instance.
+     */
 	public static function model($className=__CLASS__)
 	{
 		if(isset(self::$_models[$className]))
@@ -392,8 +402,10 @@ abstract class CActiveRecord extends CModel
                 throw new CDbException(Yii::t('yii','A model class should extend CActiveRecord'));
 			}
 			$model=self::$_models[$className]=new $className(null);
-			$model->_md=$className::generateMetaData($model);
-			$model->attachBehaviors($model->behaviors());
+            /** @var $className CActiveRecord */
+            $model->_md=$className::generateMetaData($model);
+            /** @var $model CActiveRecord */
+            $model->attachBehaviors($model->behaviors());
 			return $model;
 		}
 	}
@@ -655,7 +667,7 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function getCommandBuilder()
 	{
-		return $this->getDbConnection()->getSchema()->getCommandBuilder();
+		return CDbCommandBuilder::factory($this->getSchema(),$this->getPool());
 	}
 
 	/**
@@ -685,6 +697,8 @@ abstract class CActiveRecord extends CModel
 			return $this->$name;
 		elseif(isset($this->_attributes[$name]))
 			return $this->_attributes[$name];
+
+        return null;
 	}
 
 	/**
@@ -1319,7 +1333,8 @@ abstract class CActiveRecord extends CModel
 			$c=$this->getDbCriteria();
 			foreach((array)$criteria->scopes as $k=>$v)
 			{
-				if(is_integer($k))
+                $params=array();
+                if(is_integer($k))
 				{
 					if(is_string($v))
 					{
@@ -1329,7 +1344,6 @@ abstract class CActiveRecord extends CModel
 							continue;
 						}
 						$scope=$v;
-						$params=array();
 					}
 					elseif(is_array($v))
 					{
@@ -1343,7 +1357,8 @@ abstract class CActiveRecord extends CModel
 					$params=$v;
 				}
 
-				call_user_func_array(array($this,$scope),(array)$params);
+				if (!empty($scope))
+                    call_user_func_array(array($this,$scope),(array)$params);
 			}
 		}
 
@@ -1373,7 +1388,7 @@ abstract class CActiveRecord extends CModel
 			$alias=$criteria->alias;
 		else
 			$alias=$this->_alias;
-		return $quote ? $this->getDbConnection()->getSchema()->quoteTableName($alias) : $alias;
+		return $quote ? $this->getSchema()->quoteTableName($alias) : $alias;
 	}
 
 	/**
@@ -1847,10 +1862,9 @@ abstract class CActiveRecord extends CModel
 	 * depends the attributes that are to be populated to the record.
 	 * For example, by creating a record based on the value of a column,
 	 * you may implement the so-called single-table inheritance mapping.
-	 * @param array $attributes list of attribute values for the active records.
 	 * @return CActiveRecord the active record
 	 */
-	protected function instantiate($attributes)
+	protected function instantiate()
 	{
 		$class=get_class($this);
 		$model=new $class(null);
@@ -2309,7 +2323,7 @@ class CActiveRecordMetaData
 		$this->_model=$model;
 
 		$tableName=$model->tableName();
-		if(($table=$model->getDbConnection()->getSchema()->getTable($tableName))===null)
+		if(($table=$model->getSchema()->getTable($tableName))===null)
 			throw new CDbException(Yii::t('yii','The table "{table}" for active record class "{class}" cannot be found in the database.',
 				array('{class}'=>get_class($model),'{table}'=>$tableName)));
 		if($table->primaryKey===null)

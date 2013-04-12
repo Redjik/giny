@@ -30,11 +30,93 @@ abstract class CDbSchema extends CComponent
 	 */
 	public $columnTypes=array();
 
-	private $_tableNames=array();
+    /**
+     * @var integer number of seconds that table metadata can remain valid in cache.
+     * Use 0 or negative value to indicate not caching schema.
+     * If greater than 0 and the primary cache is enabled, the table metadata will be cached.
+     * @see schemaCachingExclude
+     */
+    public $schemaCachingDuration=0;
+    /**
+     * @var array list of tables whose metadata should NOT be cached. Defaults to empty array.
+     * @see schemaCachingDuration
+     */
+    public $schemaCachingExclude=array();
+    /**
+     * @var string the ID of the cache application component that is used to cache the table metadata.
+     * Defaults to 'cache' which refers to the primary cache application component.
+     * Set this property to false if you want to disable caching table metadata.
+     */
+    public $schemaCacheID='cache';
+
+
+    private $_tableNames=array();
 	private $_tables=array();
-	private $_connection;
+	private $_pool;
 	private $_builder;
 	private $_cacheExclude=array();
+
+    /**
+     * @var array mapping between PDO driver and schema class name.
+     * A schema class can be specified using path alias.
+     * @since 1.1.6
+     */
+    public static $driverMap=array(
+        'pgsql'=>'CPgsqlSchema',    // PostgreSQL
+        'mysqli'=>'CMysqlSchema',   // MySQL
+        'mysql'=>'CMysqlSchema',    // MySQL
+        'sqlite'=>'CSqliteSchema',  // sqlite 3
+        'sqlite2'=>'CSqliteSchema', // sqlite 2
+        'mssql'=>'CMssqlSchema',    // Mssql driver on windows hosts
+        'dblib'=>'CMssqlSchema',    // dblib drivers on linux (and maybe others os) hosts
+        'sqlsrv'=>'CMssqlSchema',   // Mssql
+        'oci'=>'COciSchema',        // Oracle driver
+    );
+
+    /**
+     * Constructor.
+     * @param IDbConnectionAccessObject $pool database connection.
+     * @param $config
+     */
+    public function __construct(IDbConnectionAccessObject $pool,$config)
+    {
+        foreach ($config as $key=>$value)
+            $this->$key = $value;
+        $this->_pool=$pool;
+
+        foreach($this->schemaCachingExclude as $name)
+            $this->_cacheExclude[$name]=true;
+    }
+
+    /**
+     * Returns the name of the DB driver
+     * @param  string $connectionString
+     * @return string name of the DB driver
+     */
+    public static function getDriverName($connectionString)
+    {
+        if(($pos=strpos($connectionString, ':'))!==false)
+            return strtolower(substr($connectionString, 0, $pos));
+
+        return false;
+    }
+
+    public static function factory(IDbConnectionAccessObject $pool,array $config)
+    {
+        $connectionString = $pool->getSchemaConnection()->getConnectionString();
+        $driver=self::getDriverName($connectionString);
+        if(isset(self::$driverMap[$driver]))
+            return Yii::createComponent(self::$driverMap[$driver],$pool,$config);
+        else
+            throw new CDbException(Yii::t('yii','CDbConnection does not support reading schema for {driver} database.',
+                array('{driver}'=>$driver)));
+    }
+
+    public function getDbType()
+    {
+        $className = get_class($this);
+        return str_replace('Schema','',$className);
+    }
 
 	/**
 	 * Loads the metadata for the specified table.
@@ -44,23 +126,20 @@ abstract class CDbSchema extends CComponent
 	abstract protected function loadTable($name);
 
 	/**
-	 * Constructor.
-	 * @param CDbConnection $conn database connection.
-	 */
-	public function __construct($conn)
-	{
-		$this->_connection=$conn;
-		foreach($conn->schemaCachingExclude as $name)
-			$this->_cacheExclude[$name]=true;
-	}
-
-	/**
-	 * @return CDbConnection database connection. The connection is active.
+	 * @return IDbConnection database connection. The connection is active.
 	 */
 	public function getDbConnection()
 	{
-		return $this->_connection;
+		return $this->_pool->getSchemaConnection();
 	}
+
+    /**
+     * @return IDbConnectionAccessObject
+     */
+    public function getPool()
+    {
+        return $this->_pool;
+    }
 
 	/**
 	 * Obtains the metadata for the named table.
@@ -75,22 +154,23 @@ abstract class CDbSchema extends CComponent
 			return $this->_tables[$name];
 		else
 		{
-			if($this->_connection->tablePrefix!==null && strpos($name,'{{')!==false)
-				$realName=preg_replace('/\{\{(.*?)\}\}/',$this->_connection->tablePrefix.'$1',$name);
+			if($this->getDbConnection()->getTablePrefix()!==null && strpos($name,'{{')!==false)
+				$realName=preg_replace('/\{\{(.*?)\}\}/',$this->getDbConnection()->getTablePrefix().'$1',$name);
 			else
 				$realName=$name;
 
 			// temporarily disable query caching
-			if($this->_connection->queryCachingDuration>0)
+			if($this->getDbConnection()->getQueryCachingDuration()>0)
 			{
-				$qcDuration=$this->_connection->queryCachingDuration;
-				$this->_connection->queryCachingDuration=0;
+				$qcDuration=$this->getDbConnection()->getQueryCachingDuration();
+				$this->getDbConnection()->setQueryCachingDuration(0);
 			}
 
-			if(!isset($this->_cacheExclude[$name]) && ($duration=$this->_connection->schemaCachingDuration)>0 && $this->_connection->schemaCacheID!==false && ($cache=Yii::app()->getComponent($this->_connection->schemaCacheID))!==null)
+			if(!isset($this->_cacheExclude[$name]) && ($duration=$this->schemaCachingDuration)>0 && $this->schemaCacheID!==false && ($cache=Yii::app()->getComponent($this->schemaCacheID))!==null)
 			{
-				$key='yii:dbschema'.$this->_connection->connectionString.':'.$this->_connection->username.':'.$name;
-				$table=$cache->get($key);
+				$key='yii:dbschema'.$this->getDbConnection()->getConnectionString().':'.$this->getDbConnection()->getUserName().':'.$name;
+                /** @var $cache CCache */
+                $table=$cache->get($key);
 				if($refresh===true || $table===false)
 				{
 					$table=$this->loadTable($realName);
@@ -103,7 +183,7 @@ abstract class CDbSchema extends CComponent
 				$this->_tables[$name]=$table=$this->loadTable($realName);
 
 			if(isset($qcDuration))  // re-enable query caching
-				$this->_connection->queryCachingDuration=$qcDuration;
+				$this->getDbConnection()->setQueryCachingDuration($qcDuration);
 
 			return $table;
 		}
@@ -141,31 +221,21 @@ abstract class CDbSchema extends CComponent
 	}
 
 	/**
-	 * @return CDbCommandBuilder the SQL command builder for this connection.
-	 */
-	public function getCommandBuilder()
-	{
-		if($this->_builder!==null)
-			return $this->_builder;
-		else
-			return $this->_builder=$this->createCommandBuilder();
-	}
-
-	/**
 	 * Refreshes the schema.
 	 * This method resets the loaded table metadata and command builder
 	 * so that they can be recreated to reflect the change of schema.
 	 */
 	public function refresh()
 	{
-		if(($duration=$this->_connection->schemaCachingDuration)>0 && $this->_connection->schemaCacheID!==false && ($cache=Yii::app()->getComponent($this->_connection->schemaCacheID))!==null)
+		if(($duration=$this->schemaCachingDuration)>0 && $this->schemaCacheID!==false && ($cache=Yii::app()->getComponent($this->schemaCacheID))!==null)
 		{
 			foreach(array_keys($this->_tables) as $name)
 			{
 				if(!isset($this->_cacheExclude[$name]))
 				{
-					$key='yii:dbschema'.$this->_connection->connectionString.':'.$this->_connection->username.':'.$name;
-					$cache->delete($key);
+					$key='yii:dbschema'.$this->getDbConnection()->getConnectionString().':'.$this->getDbConnection()->getUserName().':'.$name;
+                    /** @var $cache CCache */
+                    $cache->delete($key);
 				}
 			}
 		}
@@ -251,12 +321,12 @@ abstract class CDbSchema extends CComponent
 			$name1=substr($name1,$pos+1);
 		if(($pos=strrpos($name2,'.'))!==false)
 			$name2=substr($name2,$pos+1);
-		if($this->_connection->tablePrefix!==null)
+		if($this->getDbConnection()->getTablePrefix()!==null)
 		{
 			if(strpos($name1,'{')!==false)
-				$name1=$this->_connection->tablePrefix.str_replace(array('{','}'),'',$name1);
+				$name1=$this->getDbConnection()->getTablePrefix().str_replace(array('{','}'),'',$name1);
 			if(strpos($name2,'{')!==false)
-				$name2=$this->_connection->tablePrefix.str_replace(array('{','}'),'',$name2);
+				$name2=$this->getDbConnection()->getTablePrefix().str_replace(array('{','}'),'',$name2);
 		}
 		return $name1===$name2;
 	}
@@ -282,16 +352,6 @@ abstract class CDbSchema extends CComponent
 	 */
 	public function checkIntegrity($check=true,$schema='')
 	{
-	}
-
-	/**
-	 * Creates a command builder for the database.
-	 * This method may be overridden by child classes to create a DBMS-specific command builder.
-	 * @return CDbCommandBuilder command builder instance
-	 */
-	protected function createCommandBuilder()
-	{
-		return new CDbCommandBuilder($this);
 	}
 
 	/**

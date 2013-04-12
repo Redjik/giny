@@ -70,7 +70,7 @@ class CDbCommand extends CComponent
 	public $params=array();
 
     /**
-     * @var IDbPool
+     * @var IDbConnectionAccessObject
      */
     private $_pool;
     private $_forceMaster;

@@ -15,7 +15,7 @@
  * @package system.db.schema.mysql
  * @since 1.0
  */
-class CMysqlSchema extends GPoolSchema
+class CMysqlSchema extends CDbSchema
 {
 	/**
 	 * @var array the abstract column types mapped to physical column types.
@@ -88,10 +88,10 @@ class CMysqlSchema extends GPoolSchema
 		if($table->sequenceName!==null)
 		{
 			if($value===null)
-				$value=$this->getDbConnection()->createCommand("SELECT MAX(`{$table->primaryKey}`) FROM {$table->rawName}")->queryScalar()+1;
+				$value=$this->getPool()->createCommand("SELECT MAX(`{$table->primaryKey}`) FROM {$table->rawName}")->queryScalar()+1;
 			else
 				$value=(int)$value;
-			$this->getDbConnection()->createCommand("ALTER TABLE {$table->rawName} AUTO_INCREMENT=$value")->execute();
+			$this->getPool()->createCommand("ALTER TABLE {$table->rawName} AUTO_INCREMENT=$value")->execute();
 		}
 	}
 
@@ -103,7 +103,7 @@ class CMysqlSchema extends GPoolSchema
 	 */
 	public function checkIntegrity($check=true,$schema='')
 	{
-		$this->getDbConnection()->createCommand('SET FOREIGN_KEY_CHECKS='.($check?1:0))->execute();
+		$this->getPool()->createCommand('SET FOREIGN_KEY_CHECKS='.($check?1:0))->execute();
 	}
 
 	/**
@@ -156,7 +156,7 @@ class CMysqlSchema extends GPoolSchema
 		$sql='SHOW FULL COLUMNS FROM '.$table->rawName;
 		try
 		{
-			$columns=$this->getDbConnection()->createCommand($sql)->queryAll();
+			$columns=$this->getPool()->createCommand($sql)->queryAll();
 		}
 		catch(Exception $e)
 		{
@@ -219,7 +219,7 @@ class CMysqlSchema extends GPoolSchema
 	 */
 	protected function findConstraints($table)
 	{
-		$row=$this->getDbConnection()->createCommand('SHOW CREATE TABLE '.$table->rawName)->queryRow();
+		$row=$this->getPool()->createCommand('SHOW CREATE TABLE '.$table->rawName)->queryRow();
 		$matches=array();
 		$regexp='/FOREIGN KEY\s+\(([^\)]+)\)\s+REFERENCES\s+([^\(^\s]+)\s*\(([^\)]+)\)/mi';
 		foreach($row as $sql)
@@ -249,22 +249,11 @@ class CMysqlSchema extends GPoolSchema
 	protected function findTableNames($schema='')
 	{
 		if($schema==='')
-			return $this->getDbConnection()->createCommand('SHOW TABLES')->queryColumn();
-		$names=$this->getDbConnection()->createCommand('SHOW TABLES FROM '.$this->quoteTableName($schema))->queryColumn();
+			return $this->getPool()->createCommand('SHOW TABLES')->queryColumn();
+		$names=$this->getPool()->createCommand('SHOW TABLES FROM '.$this->quoteTableName($schema))->queryColumn();
 		foreach($names as &$name)
 			$name=$schema.'.'.$name;
 		return $names;
-	}
-
-	/**
-	 * Creates a command builder for the database.
-	 * This method overrides parent implementation in order to create a MySQL specific command builder
-	 * @return CDbCommandBuilder command builder instance
-	 * @since 1.1.13
-	 */
-	protected function createCommandBuilder()
-	{
-		return new CMysqlCommandBuilder($this);
 	}
 
 	/**
@@ -278,8 +267,8 @@ class CMysqlSchema extends GPoolSchema
 	 */
 	public function renameColumn($table, $name, $newName)
 	{
-		$db=$this->getDbConnection();
-		$row=$db->createCommand('SHOW CREATE TABLE '.$db->quoteTableName($table))->queryRow();
+
+		$row=$this->getPool()->createCommand('SHOW CREATE TABLE '.$this->quoteTableName($table))->queryRow();
 		if($row===false)
 			throw new CDbException(Yii::t('yii','Unable to find "{column}" in table "{table}".',array('{column}'=>$name,'{table}'=>$table)));
 		if(isset($row['Create Table']))
@@ -295,16 +284,16 @@ class CMysqlSchema extends GPoolSchema
 			{
 				if($c===$name)
 				{
-					return "ALTER TABLE ".$db->quoteTableName($table)
-						. " CHANGE ".$db->quoteColumnName($name)
-						. ' '.$db->quoteColumnName($newName).' '.$matches[2][$i];
+					return "ALTER TABLE ".$this->quoteTableName($table)
+						. " CHANGE ".$this->quoteColumnName($name)
+						. ' '.$this->quoteColumnName($newName).' '.$matches[2][$i];
 				}
 			}
 		}
 
 		// try to give back a SQL anyway
-		return "ALTER TABLE ".$db->quoteTableName($table)
-			. " CHANGE ".$db->quoteColumnName($name).' '.$newName;
+		return "ALTER TABLE ".$this->quoteTableName($table)
+			. " CHANGE ".$this->quoteColumnName($name).' '.$newName;
 	}
 
 	/**
