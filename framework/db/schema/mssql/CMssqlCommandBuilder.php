@@ -20,18 +20,19 @@
  */
 class CMssqlCommandBuilder extends CDbCommandBuilder
 {
-	/**
-	 * Creates a COUNT(*) command for a single table.
-	 * Override parent implementation to remove the order clause of criteria if it exists
-	 * @param CDbTableSchema $table the table metadata
-	 * @param CDbCriteria $criteria the query criteria
-	 * @param string $alias the alias name of the primary table. Defaults to 't'.
-	 * @return CDbCommand query command.
-	 */
-	public function createCountCommand($table,$criteria,$alias='t')
+    /**
+     * Creates a COUNT(*) command for a single table.
+     * Override parent implementation to remove the order clause of criteria if it exists
+     * @param CDbTableSchema $table the table metadata
+     * @param CDbCriteria $criteria the query criteria
+     * @param bool $forceMaster
+     * @param string $alias the alias name of the primary table. Defaults to 't'.
+     * @return CDbCommand query command.
+     */
+	public function createCountCommand($table,$criteria,$forceMaster=false,$alias='t')
 	{
 		$criteria->order='';
-		return parent::createCountCommand($table, $criteria,$alias);
+		return parent::createCountCommand($table, $criteria, $forceMaster,$alias);
 	}
 
 	/**
@@ -42,10 +43,10 @@ class CMssqlCommandBuilder extends CDbCommandBuilder
 	 * @param string $alias the alias name of the primary table. Defaults to 't'.
 	 * @return CDbCommand query command.
 	 */
-	public function createFindCommand($table,$criteria,$alias='t')
+	public function createFindCommand($table,$criteria,$forceMaster=false,$alias='t')
 	{
 		$criteria=$this->checkCriteria($table,$criteria);
-		return parent::createFindCommand($table,$criteria,$alias);
+		return parent::createFindCommand($table,$criteria,$forceMaster,$alias);
 
 	}
 

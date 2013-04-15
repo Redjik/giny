@@ -138,10 +138,12 @@ class GDbPool extends CApplicationComponent implements IDbConnectionAccessObject
             $connection['class'] = 'CDbConnection';
 
         $connection = Yii::createComponent($connection);
+        $connection->init();
 
         if ($connection instanceof IDbConnection)
         {
             $this->activeConnections[]=$name;
+            $this->poolConnections[$name] = $connection;
             return $connection;
         }
 
@@ -178,13 +180,12 @@ class GDbPool extends CApplicationComponent implements IDbConnectionAccessObject
     /**
      * Creates a command for execution.
      * @param mixed $query the DB query to be executed. This can be a string representing a SQL statement,
-     * @param bool|string $type
-     * @internal param bool $forceMaster use master for read commands
+     * @param bool $forceMaster use master for read commands
      * @return GDbCommand the DB command
      */
-    public function createCommand($query,$type = GDbCommand::PREFER_DEFAULT)
+    public function createCommand($query,$forceMaster = false)
     {
-        return new GDbCommand($this,$query, $type);
+        return new GDbCommand($this,$query, $forceMaster);
     }
 
     public function createQueryBuilder()
@@ -200,9 +201,7 @@ class GDbPool extends CApplicationComponent implements IDbConnectionAccessObject
      */
     public function getSchema()
     {
-        if($this->_schema!==null)
-            return $this->_schema;
-        else
+        if($this->_schema === null)
         {
             $config = array();
 
@@ -215,8 +214,11 @@ class GDbPool extends CApplicationComponent implements IDbConnectionAccessObject
             if (!empty($this->schemaCacheID))
                 $config['schemaCacheID'] = $this->schemaCacheID;
 
-            CDbSchema::factory($this,$config);
+            $this->_schema = CDbSchema::factory($this,$config);
+
         }
+
+        return $this->_schema;
     }
 
 }

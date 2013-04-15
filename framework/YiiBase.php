@@ -634,6 +634,14 @@ class YiiBase
 	 * PLEASE RUN 'build autoload' COMMAND TO UPDATE THIS ARRAY.
 	 */
 	private static $_coreClasses=array(
+        'IActiveRecord'=>'/../ARredone/Interfaces/IActiveRecord.php',
+        'IDbConnectionAccessObject'=>'/../ARredone/Interfaces/IDbConnectionAccessObject.php',
+        'IDbConnection'=>'/../ARredone/Interfaces/IDbConnection.php',
+        'GDbCommand'=>'/../ARredone/GDbCommand.php',
+        'GDbQueryHelper'=>'/../ARredone/GDbQueryHelper.php',
+        'GDbPool'=>'/../ARredone/GDbPool.php',
+
+
 		'CApplication' => '/base/CApplication.php',
 		'CApplicationComponent' => '/base/CApplicationComponent.php',
 		'CBehavior' => '/base/CBehavior.php',

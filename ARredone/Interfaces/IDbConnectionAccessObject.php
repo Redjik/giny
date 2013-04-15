@@ -31,10 +31,10 @@ interface IDbConnectionAccessObject
 
     /**
      * @param $query
-     * @param string $type
+     * @param bool $forceMaster
      * @return GDbCommand
      */
-    public function createCommand($query,$type = GDbCommand::PREFER_DEFAULT);
+    public function createCommand($query,$forceMaster = false);
 
     /**
      * @return CDbSchema the database schema

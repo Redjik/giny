@@ -44,7 +44,7 @@ class GDbCommand extends CComponent
      * {@link setFetchMode FetchMode}. See {@link http://www.php.net/manual/en/function.PDOStatement-setFetchMode.php}
      * for more details.
      */
-    public function __construct(IDbConnectionAccessObject $connectionPool,$query=null,$forceMaster=false)
+    public function __construct(IDbConnectionAccessObject $connectionPool,$query,$forceMaster=false)
     {
         $this->_pool = $connectionPool;
         $this->_forceMaster = $forceMaster;
@@ -106,12 +106,15 @@ class GDbCommand extends CComponent
      */
     public function setText($value)
     {
-        if($this->_connection->getTablePrefix()!==null && $value!='')
-            $this->_text=preg_replace('/{{(.*?)}}/',$this->_connection->getTablePrefix().'\1',$value);
-        else
-            $this->_text=$value;
+        $this->_text=$value;
         $this->cancel();
         return $this;
+    }
+
+    protected function checkTablePrefix()
+    {
+        if($this->_connection->getTablePrefix()!==null)
+            $this->_text=preg_replace('/{{(.*?)}}/',$this->_connection->getTablePrefix().'\1',$this->_text);
     }
 
     /**
@@ -141,7 +144,7 @@ class GDbCommand extends CComponent
      */
     public function prepare()
     {
-        $this->cancel();
+        $this->createStatement();
     }
 
     protected function createStatement()
@@ -258,7 +261,7 @@ class GDbCommand extends CComponent
     public function execute($params=array())
     {
         $this->getWriteConnection();
-        $this->createStatement();
+        $this->checkTablePrefix();
 
         if($this->_connection->getEnableParamLogging() && ($pars=array_merge($this->_paramLog,$params))!==array())
         {
@@ -415,8 +418,7 @@ class GDbCommand extends CComponent
     private function queryInternal($method,$mode,$params=array())
     {
         $this->getReadConnection();
-        $this->createStatement();
-
+        $this->checkTablePrefix();
         if($this->_connection->getEnableParamLogging() && ($pars=array_merge($this->_paramLog,$params))!==array())
         {
             $p=array();

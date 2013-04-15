@@ -104,7 +104,7 @@ abstract class CDbCommandBuilder extends CComponent
 	 * @param string $alias the alias name of the primary table. Defaults to 't'.
 	 * @return GDbCommand query command.
 	 */
-	public function createFindCommand($table,$criteria,$alias='t')
+	public function createFindCommand($table,$criteria,$forceMaster=false,$alias='t')
 	{
 		$this->ensureTable($table);
 		$select=is_array($criteria->select) ? implode(', ',$criteria->select) : $criteria->select;
@@ -129,19 +129,20 @@ abstract class CDbCommandBuilder extends CComponent
 		$sql=$this->applyHaving($sql,$criteria->having);
 		$sql=$this->applyOrder($sql,$criteria->order);
 		$sql=$this->applyLimit($sql,$criteria->limit,$criteria->offset);
-		$command=$this->_pool->createCommand($sql);
+		$command=$this->_pool->createCommand($sql,$forceMaster);
 		$this->bindValues($command,$criteria->params);
 		return $command;
 	}
 
-	/**
-	 * Creates a COUNT(*) command for a single table.
-	 * @param mixed $table the table schema ({@link CDbTableSchema}) or the table name (string).
-	 * @param CDbCriteria $criteria the query criteria
-	 * @param string $alias the alias name of the primary table. Defaults to 't'.
-	 * @return GDbCommand query command.
-	 */
-	public function createCountCommand($table,$criteria,$alias='t')
+    /**
+     * Creates a COUNT(*) command for a single table.
+     * @param mixed $table the table schema ({@link CDbTableSchema}) or the table name (string).
+     * @param CDbCriteria $criteria the query criteria
+     * @param bool $forceMaster
+     * @param string $alias the alias name of the primary table. Defaults to 't'.
+     * @return GDbCommand query command.
+     */
+	public function createCountCommand($table,$criteria,$forceMaster=false,$alias='t')
 	{
 		$this->ensureTable($table);
 		if($criteria->alias!='')
@@ -206,7 +207,7 @@ abstract class CDbCommandBuilder extends CComponent
 				unset($criteria->params[$param]);
 		}
 
-		$command=$this->_pool->createCommand($sql);
+		$command=$this->_pool->createCommand($sql,$forceMaster);
 		$this->bindValues($command,$criteria->params);
 		return $command;
 	}

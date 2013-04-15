@@ -45,6 +45,7 @@ abstract class CActiveRecord extends CModel implements IActiveRecord
 	const STAT='CStatRelation';
 
 
+    private $_forceMaster = false;
 	private static $_models=array();			// class name => model
 
 	private $_md;								// meta data
@@ -1309,7 +1310,7 @@ abstract class CActiveRecord extends CModel implements IActiveRecord
 		{
 			if(!$all)
 				$criteria->limit=1;
-			$command=$this->getCommandBuilder()->createFindCommand($this->getTableSchema(),$criteria,$this->getTableAlias());
+			$command=$this->getCommandBuilder()->createFindCommand($this->getTableSchema(),$criteria,$this->_forceMaster,$this->getTableAlias());
 			return $all ? $this->populateRecords($command->queryAll(), true, $criteria->index) : $this->populateRecord($command->queryRow());
 		}
 		else
@@ -1560,7 +1561,7 @@ abstract class CActiveRecord extends CModel implements IActiveRecord
 		$this->applyScopes($criteria);
 
 		if(empty($criteria->with))
-			return $builder->createCountCommand($this->getTableSchema(),$criteria)->queryScalar();
+			return $builder->createCountCommand($this->getTableSchema(),$criteria,$this->_forceMaster)->queryScalar();
 		else
 		{
 			$finder=new CActiveFinder($this,$criteria->with);
@@ -1587,7 +1588,7 @@ abstract class CActiveRecord extends CModel implements IActiveRecord
 		$this->applyScopes($criteria);
 
 		if(empty($criteria->with))
-			return $builder->createCountCommand($this->getTableSchema(),$criteria)->queryScalar();
+			return $builder->createCountCommand($this->getTableSchema(),$criteria,$this->_forceMaster)->queryScalar();
 		else
 		{
 			$finder=new CActiveFinder($this,$criteria->with);
@@ -1627,7 +1628,7 @@ abstract class CActiveRecord extends CModel implements IActiveRecord
 		$this->applyScopes($criteria);
 
 		if(empty($criteria->with))
-			return $builder->createFindCommand($table,$criteria,$this->getTableAlias(false, false))->queryRow()!==false;
+			return $builder->createFindCommand($table,$criteria,$this->_forceMaster,$this->getTableAlias(false, false))->queryRow()!==false;
 		else
 		{
 			$criteria->select='*';
@@ -1881,6 +1882,26 @@ abstract class CActiveRecord extends CModel implements IActiveRecord
 	{
 		return $this->__isset($offset);
 	}
+
+
+
+    /**
+     * @return CActiveRecord
+     */
+    public function forceMaster()
+    {
+        $this->_forceMaster = true;
+        return $this;
+    }
+
+    /**
+     * @return CActiveRecord
+     */
+    public function unsetForceMaster()
+    {
+        $this->_forceMaster = false;
+        return $this;
+    }
 }
 
 

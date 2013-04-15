@@ -56,7 +56,7 @@ class ModelCode extends CCodeModel
 	{
 		if(Yii::app()->{$this->connectionId}===null)
 			throw new CHttpException(500,'A valid database connection is required to run this generator.');
-		$this->tablePrefix=Yii::app()->{$this->connectionId}->tablePrefix;
+		$this->tablePrefix=Yii::app()->db->getWriteConnection()->getTablePrefix();
 		parent::init();
 	}
 
@@ -74,7 +74,7 @@ class ModelCode extends CCodeModel
 		}
 		if($tableName[strlen($tableName)-1]==='*')
 		{
-			$tables=Yii::app()->{$this->connectionId}->schema->getTables($schema);
+			$tables=Yii::app()->db->getSchema()->getTables($schema);
 			if($this->tablePrefix!='')
 			{
 				foreach($tables as $i=>$table)
@@ -127,7 +127,7 @@ class ModelCode extends CCodeModel
 				$schema='';
 
 			$this->modelClass='';
-			$tables=Yii::app()->{$this->connectionId}->schema->getTables($schema);
+			$tables=Yii::app()->db->getSchema()->getTables($schema);
 			foreach($tables as $table)
 			{
 				if($this->tablePrefix=='' || strpos($table->name,$this->tablePrefix)===0)
@@ -188,7 +188,7 @@ class ModelCode extends CCodeModel
 
 	public function getTableSchema($tableName)
 	{
-		$connection=Yii::app()->{$this->connectionId};
+		$connection=Yii::app()->db;
 		return $connection->getSchema()->getTable($tableName, $connection->schemaCachingDuration!==0);
 	}
 
@@ -256,7 +256,7 @@ class ModelCode extends CCodeModel
 
 	protected function removePrefix($tableName,$addBrackets=true)
 	{
-		if($addBrackets && Yii::app()->{$this->connectionId}->tablePrefix=='')
+		if($addBrackets && Yii::app()->db->getReadConnection()->getTablePrefix()=='')
 			return $tableName;
 		$prefix=$this->tablePrefix!='' ? $this->tablePrefix : Yii::app()->{$this->connectionId}->tablePrefix;
 		if($prefix!='')
@@ -287,7 +287,7 @@ class ModelCode extends CCodeModel
 		if(!$this->buildRelations)
 			return array();
 		$relations=array();
-		foreach(Yii::app()->{$this->connectionId}->schema->getTables() as $table)
+		foreach(Yii::app()->db->getSchema()->getTables() as $table)
 		{
 			if($this->tablePrefix!='' && strpos($table->name,$this->tablePrefix)!==0)
 				continue;
@@ -399,7 +399,7 @@ class ModelCode extends CCodeModel
 			$name.=ucfirst($names[$i]);
 
 		$rawName=$name;
-		$table=Yii::app()->{$this->connectionId}->schema->getTable($tableName);
+		$table=Yii::app()->db->getSchema()->getTable($tableName);
 		$i=0;
 		while(isset($table->columns[$name]))
 			$name=$rawName.($i++);
@@ -409,7 +409,7 @@ class ModelCode extends CCodeModel
 
 	public function validateConnectionId($attribute, $params)
 	{
-		if(Yii::app()->hasComponent($this->connectionId)===false || !(Yii::app()->getComponent($this->connectionId) instanceof CDbConnection))
+		if(Yii::app()->hasComponent($this->connectionId)===false || !(Yii::app()->getComponent($this->connectionId) instanceof IDbConnectionAccessObject))
 			$this->addError('connectionId','A valid database connection is required to run this generator.');
 	}
 }

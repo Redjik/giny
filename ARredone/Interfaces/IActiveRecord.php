@@ -16,7 +16,7 @@ interface IActiveRecord
     public function getPool();
 
     /**
-     * @return IDbSchemaAccessObject
+     * @return CDbSchema
      */
     public function getSchema();
 
@@ -25,4 +25,15 @@ interface IActiveRecord
      * @return CDbCommandBuilder the command builder
      */
     public function getCommandBuilder();
+
+    /**
+     * @return CActiveRecord
+     */
+    public function forceMaster();
+
+
+    /**
+     * @return CActiveRecord
+     */
+    public function unsetForceMaster();
 }
