@@ -138,7 +138,6 @@ class GDbPool extends CApplicationComponent implements IDbConnectionAccessObject
             $connection['class'] = 'CDbConnection';
 
         $connection = Yii::createComponent($connection);
-        $connection->init();
 
         if ($connection instanceof IDbConnection)
         {

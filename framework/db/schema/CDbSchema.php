@@ -82,6 +82,7 @@ abstract class CDbSchema extends CComponent
     {
         foreach ($config as $key=>$value)
             $this->$key = $value;
+
         $this->_pool=$pool;
         foreach($this->schemaCachingExclude as $name)
             $this->_cacheExclude[$name]=true;

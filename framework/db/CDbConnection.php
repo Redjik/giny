@@ -164,12 +164,7 @@ class CDbConnection extends CApplicationComponent implements IDbConnection
 	 * @since 1.1.7
 	 */
 	public $queryCacheID='cache';
-	/**
-	 * @var boolean whether the database connection should be automatically established
-	 * the component is being initialized. Defaults to true. Note, this property is only
-	 * effective when the CDbConnection object is used as an application component.
-	 */
-	public $autoConnect=true;
+
 	/**
 	 * @var string the charset used for database connection. The property is only used
 	 * for MySQL and PostgreSQL databases. Defaults to null, meaning using default charset
@@ -362,8 +357,6 @@ class CDbConnection extends CApplicationComponent implements IDbConnection
 	public function init()
 	{
 		parent::init();
-		if($this->autoConnect)
-			$this->setActive(true);
 	}
 
 	/**
@@ -523,7 +516,8 @@ class CDbConnection extends CApplicationComponent implements IDbConnection
 	 */
 	public function getPdoInstance()
 	{
-		return $this->_pdo;
+		$this->setActive(true);
+        return $this->_pdo;
 	}
 
 	/**
