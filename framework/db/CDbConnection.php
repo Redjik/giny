@@ -45,21 +45,6 @@
  * $command->execute();
  * </pre>
  *
- * To use transaction, do like the following:
- * <pre>
- * $transaction=$connection->beginTransaction();
- * try
- * {
- *    $connection->createCommand($sql1)->execute();
- *    $connection->createCommand($sql2)->execute();
- *    //.... other SQL executions
- *    $transaction->commit();
- * }
- * catch(Exception $e)
- * {
- *    $transaction->rollback();
- * }
- * </pre>
  *
  * CDbConnection also provides a set of methods to support setting and querying
  * of certain DBMS attributes, such as {@link getNullConversion nullConversion}.
@@ -80,7 +65,6 @@
  *
  * @property boolean $active Whether the DB connection is established.
  * @property PDO $pdoInstance The PDO instance, null if the connection is not established yet.
- * @property CDbTransaction $currentTransaction The currently active transaction. Null if no active transaction.
  * @property CDbSchema $schema The database schema for the current connection.
  * @property CDbCommandBuilder $commandBuilder The command builder.
  * @property string $lastInsertID The row ID of the last row inserted, or the last value retrieved from the sequence object.
@@ -521,32 +505,6 @@ class CDbConnection extends CApplicationComponent implements IDbConnection
 	}
 
 	/**
-	 * Returns the currently active transaction.
-	 * @return CDbTransaction the currently active transaction. Null if no active transaction.
-	 */
-	public function getCurrentTransaction()
-	{
-		if($this->_transaction!==null)
-		{
-			if($this->_transaction->getActive())
-				return $this->_transaction;
-		}
-		return null;
-	}
-
-	/**
-	 * Starts a transaction.
-	 * @return CDbTransaction the transaction initiated
-	 */
-	public function beginTransaction()
-	{
-		Yii::trace('Starting transaction','system.db.CDbConnection');
-		$this->setActive(true);
-		$this->getPdoInstance()->beginTransaction();
-		return $this->_transaction=new CDbTransaction($this);
-	}
-
-	/**
 	 * Returns the ID of the last inserted row or sequence value.
 	 * @param string $sequenceName name of the sequence object (required by some DBMS)
 	 * @return string the row ID of the last row inserted, or the last value retrieved from the sequence object
@@ -554,7 +512,6 @@ class CDbConnection extends CApplicationComponent implements IDbConnection
 	 */
 	public function getLastInsertID($sequenceName='')
 	{
-		$this->setActive(true);
 		return $this->getPdoInstance()->lastInsertId($sequenceName);
 	}
 
@@ -569,7 +526,6 @@ class CDbConnection extends CApplicationComponent implements IDbConnection
 		if(is_int($str) || is_float($str))
 			return $str;
 
-		$this->setActive(true);
 		if(($value=$this->getPdoInstance()->quote($str))!==false)
 			return $value;
 		else  // the driver doesn't support quote (e.g. oci)
@@ -721,7 +677,6 @@ class CDbConnection extends CApplicationComponent implements IDbConnection
 	 */
 	public function getAttribute($name)
 	{
-		$this->setActive(true);
 		return $this->getPdoInstance()->getAttribute($name);
 	}
 

@@ -1,4 +1,13 @@
 <?php
+
+
+
+/**
+ * Class GDbPool
+ *
+ *
+ * @property CDbTransaction $currentTransaction The currently active transaction. Null if no active transaction.
+ */
 class GDbPool extends CApplicationComponent implements IDbConnectionAccessObject
 {
 
@@ -35,6 +44,11 @@ class GDbPool extends CApplicationComponent implements IDbConnectionAccessObject
     protected $slaveKeys = array();
 
     private $_schema;
+
+    /**
+     * @var CDbTransaction
+     */
+    private $_transaction;
 
     public function init()
     {
@@ -100,6 +114,9 @@ class GDbPool extends CApplicationComponent implements IDbConnectionAccessObject
     public function getReadConnection($forceMaster = false)
     {
         if ($forceMaster)
+            return $this->getWriteConnection();
+
+        if ($this->getCurrentTransaction() instanceof CDbTransaction)
             return $this->getWriteConnection();
 
         $connections = array_intersect($this->slaveKeys,$this->activeConnections);
@@ -192,6 +209,30 @@ class GDbPool extends CApplicationComponent implements IDbConnectionAccessObject
 
     }
 
+    /**
+     * Returns the currently active transaction.
+     * @return CDbTransaction the currently active transaction. Null if no active transaction.
+     */
+    public function getCurrentTransaction()
+    {
+        if($this->_transaction!==null)
+        {
+            if($this->_transaction->getActive())
+                return $this->_transaction;
+        }
+        return null;
+    }
+
+    /**
+     * Starts a transaction.
+     * @return CDbTransaction the transaction initiated
+     */
+    public function beginTransaction()
+    {
+        Yii::trace('Starting transaction','system.db.CDbConnection');
+        $this->getWriteConnection()->getPdoInstance()->beginTransaction();
+        return $this->_transaction=new CDbTransaction($this);
+    }
 
     /**
      * Returns the database schema for the current connection

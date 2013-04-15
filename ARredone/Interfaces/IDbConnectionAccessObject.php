@@ -37,6 +37,18 @@ interface IDbConnectionAccessObject
     public function createCommand($query,$forceMaster = false);
 
     /**
+     * Starts a transaction.
+     * @return CDbTransaction the transaction initiated
+     */
+    public function beginTransaction();
+
+    /**
+     * Returns the currently active transaction.
+     * @return CDbTransaction the currently active transaction. Null if no active transaction.
+     */
+    public function getCurrentTransaction();
+
+    /**
      * @return CDbSchema the database schema
      */
     function getSchema();
