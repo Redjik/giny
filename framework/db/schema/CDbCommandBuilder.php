@@ -97,13 +97,14 @@ abstract class CDbCommandBuilder extends CComponent
 			return null;
 	}
 
-	/**
-	 * Creates a SELECT command for a single table.
-	 * @param mixed $table the table schema ({@link CDbTableSchema}) or the table name (string).
-	 * @param CDbCriteria $criteria the query criteria
-	 * @param string $alias the alias name of the primary table. Defaults to 't'.
-	 * @return GDbCommand query command.
-	 */
+    /**
+     * Creates a SELECT command for a single table.
+     * @param mixed $table the table schema ({@link CDbTableSchema}) or the table name (string).
+     * @param CDbCriteria $criteria the query criteria
+     * @param bool $forceMaster
+     * @param string $alias the alias name of the primary table. Defaults to 't'.
+     * @return GDbCommand query command.
+     */
 	public function createFindCommand($table,$criteria,$forceMaster=false,$alias='t')
 	{
 		$this->ensureTable($table);

@@ -17,6 +17,8 @@ class GDbCommand extends CComponent
      * @var PDOStatement
      */
     protected $_statement;
+    protected $_bindValues=array();
+    protected $_bindParams=array();
     protected $_paramLog=array();
 
     protected $_fetchMode = array(PDO::FETCH_ASSOC);
@@ -86,6 +88,8 @@ class GDbCommand extends CComponent
     {
         $this->_text=null;
         $this->_statement=null;
+        $this->_bindParams=array();
+        $this->_bindValues=array();
         $this->_paramLog=array();
         return $this;
     }
@@ -145,6 +149,8 @@ class GDbCommand extends CComponent
     public function prepare()
     {
         $this->createStatement();
+        $this->bindValuesInternal();
+        $this->bindParamsInternal();
     }
 
     protected function createStatement()
@@ -172,6 +178,9 @@ class GDbCommand extends CComponent
     public function cancel()
     {
         $this->_statement=null;
+        $this->_bindParams=array();
+        $this->_bindValues=array();
+        $this->_paramLog=array();
     }
 
     /**
@@ -189,17 +198,24 @@ class GDbCommand extends CComponent
      */
     public function bindParam($name, &$value, $dataType=null, $length=null, $driverOptions=null)
     {
-        $this->prepare();
-        if($dataType===null)
-            $this->_statement->bindParam($name,$value,GDbQueryHelper::getPdoType(gettype($value)));
-        elseif($length===null)
-            $this->_statement->bindParam($name,$value,$dataType);
-        elseif($driverOptions===null)
-            $this->_statement->bindParam($name,$value,$dataType,$length);
-        else
-            $this->_statement->bindParam($name,$value,$dataType,$length,$driverOptions);
-        $this->_paramLog[$name]=&$value;
+        $this->_bindParams[$name]=array('value'=>&$value,'dataType'=>$dataType,'driverOptions'=>$driverOptions);
         return $this;
+    }
+
+    protected function bindParamsInternal()
+    {
+        foreach ($this->_bindParams as $name=>$value)
+        {
+            if($value['dataType']===null)
+                $this->_statement->bindParam($name,$value,GDbQueryHelper::getPdoType(gettype($value)));
+            elseif($value['length']===null)
+                $this->_statement->bindParam($name,$value['value'],$value['dataType']);
+            elseif($value['driverOptions']===null)
+                $this->_statement->bindParam($name,$value['value'],$value['dataType'],$value['length']);
+            else
+                $this->_statement->bindParam($name,$value['value'],$value['dataType'],$value['length'],$value['driverOptions']);
+            $this->_paramLog[$name]=&$value['value'];
+        }
     }
 
     /**
@@ -215,13 +231,20 @@ class GDbCommand extends CComponent
      */
     public function bindValue($name, $value, $dataType=null)
     {
-        $this->prepare();
-        if($dataType===null)
-            $this->_statement->bindValue($name,$value,GDbQueryHelper::getPdoType(gettype($value)));
-        else
-            $this->_statement->bindValue($name,$value,$dataType);
-        $this->_paramLog[$name]=$value;
+        $this->_bindValues[$name]=array('value'=>$value,'dataType'=>$dataType);
         return $this;
+    }
+
+    protected function bindValuesInternal()
+    {
+        foreach ($this->_bindValues as $name=>$value)
+        {
+            if($value['dataType']===null)
+                $this->_statement->bindValue($name,$value['value'],GDbQueryHelper::getPdoType(gettype($value)));
+            else
+                $this->_statement->bindValue($name,$value['value'],$value['dataType']);
+            $this->_paramLog[$name]=$value['value'];
+        }
     }
 
     /**
@@ -236,11 +259,9 @@ class GDbCommand extends CComponent
      */
     public function bindValues($values)
     {
-        $this->prepare();
         foreach($values as $name=>$value)
         {
-            $this->_statement->bindValue($name,$value,GDbQueryHelper::getPdoType(gettype($value)));
-            $this->_paramLog[$name]=$value;
+            $this->bindValue($name,$value);
         }
         return $this;
     }
