@@ -851,6 +851,9 @@ class YiiBase
 		'CBasePager' => '/web/widgets/pagers/CBasePager.php',
 		'CLinkPager' => '/web/widgets/pagers/CLinkPager.php',
 		'CListPager' => '/web/widgets/pagers/CListPager.php',
+
+        //giny components
+        'GDICComponent' => '/base/GDICComponent.php',
 	);
 }
 
