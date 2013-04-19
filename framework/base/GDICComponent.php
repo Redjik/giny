@@ -505,13 +505,23 @@ abstract class GDICComponent extends CComponent implements IApplicationComponent
             }
             else
             {
-                if (strpos($argument,'%')===0)
+                if (is_string($argument))
                 {
-                    $argument_name = str_replace('%','',$argument);
-                    $args[$argumentName] = $this->$argument_name;
+                    if (strpos($argument,'%')===0)
+                    {
+                        $argument_name = str_replace('%','',$argument);
+                        $args[$argumentName] = $this->$argument_name;
+                    }
+                    else
+                    {
+                        $args[$argumentName] = $argument;
+                    }
                 }
                 else
+                {
                     $args[$argumentName] = $argument;
+                }
+
             }
 
             $i++;
