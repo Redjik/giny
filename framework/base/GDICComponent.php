@@ -260,9 +260,12 @@ abstract class GDICComponent extends CComponent implements IApplicationComponent
                 $this->parseAutoloader($config);
 
                 $component = $this->createComponent($config);
-                return $this->_components[$id] = $component;
+                $this->_components[$id] = $component;
+                return $this->_components[$id];
             }
         }
+
+        return null;
     }
 
 
