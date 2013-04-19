@@ -2,6 +2,141 @@
 
 /**
  * Class GDICComponent
+ *
+ * this class is still under construction
+ * it works as usual component, but it is a Dependency Injection Container (DIC)
+ *
+ * So for now, we can set up component based on this class in app config in the usual way.
+ *
+ * 'DICBasedComponent'=>array(
+ *     'class'=>'ext.DICBasedComponent'
+ * }
+ *
+ * We add components to DIC in yii-fashion way
+ *
+ * 'DICBasedComponent'=>array(
+ *     'class'=>'ext.DICBasedComponent'
+ *     'components'=>array(
+ *         'firstComponent'=>array(
+ *             'class'=>'ext.firstComponent'
+ *         )
+ *     )
+ * )
+ *
+ * We have access to these components via __get
+ * So if we specify php-doc property in DICBasedComponent class - auto complete will work in IDE
+ * ex. Yii::app()->DICBasedComponent->firstComponent
+ *
+ * There are also some additional optional keys for component config array.
+ * For now these keys are:
+ *
+ * 1) autoloader
+ *
+ * sets additional autoloader if we are using some external libraries which needed only for one component
+ * still for now it is better to use autoladers in init method of DIC component
+ * @see GMailComonent::init() for this example
+ *
+ * 'DICBasedComponent'=>array(
+ *     'class'=>'ext.DICBasedComponent'
+ *     'components'=>array(
+ *         'firstComponent'=>array(
+ *             'class'=>'ext.firstComponent',
+ *             'autoloader'=>array('ClassName','method')
+ *         )
+ *     )
+ * )
+ *
+ * there are also some additional optional params
+ * 'autoloader'=>array('ClassName','method') is default implementation and autoloader is set before Yii autoloader
+ *
+ * 'autoloader'=>array('ClassName','method')
+ * 'autoloader'=>array('callback'=>array('ClassName','method'))
+ * 'autoloader'=>array('callback'=>array('ClassName','method'),'append'=>'false')
+ * Previous 3 lines work identical.
+ *
+ * If we need to set autoloader AFTER Yii autoloader syntax is the following
+ * 'autoloader'=>array('callback'=>array('ClassName','method'),'append'=>'true')
+ *
+ * for more info @see YiiBase::registerAutoloader()
+ *
+ * All implementation is a workaround wrapper for this method.
+ *
+ * 2) arguments
+ *
+ * sets arguments passed into __construct method of the component.
+ * since we don't want to use Replication - we have to preserve the order of the params
+ * params can have % sign in the beginning - that means that this param should be taken from current DIC
+ *
+ *  'mailer'=>array(
+ *       'class'=>'Swift_Mailer',
+ *       'arguments'=>array(
+ *           'transport'=>'%transport'
+ *       ),
+ *   )
+ *
+ * in this example new Swift_Mailer instance is created and transport passed into __construct method.
+ * transport should be another previously defined component or a public property of DIC
+ *
+ * 3) methods
+ *
+ * sets methods that should be run after class initialization.
+ * if class is instance of IApplicationComponent then init() method is fired first
+ * then goes these defined methods
+ * method params with % are parsed in the same way as arguments
+ *
+ * ----------------------------------------------------------------------------------
+ *         'mail' => array(
+ *           'class'=>'GMailComponent',
+ *           'components'=> array(
+ *               'transport'=>array(
+ *                   'class'=>'Swift_SmtpTransport',
+ *                   'arguments'=>array(
+ *                       'host'=>'smtp.example.org',
+ *                       'port'=>25
+ *                   ),
+ *                   'methods'=>array(
+ *                       'setUsername'=>array('username'),
+ *                       'setPassword'=>array('password'),
+ *                   ),
+ *               ),
+ *               'message'=>array(
+ *                   'class'=>'Swift_Message',
+ *                   'arguments'=>array(
+ *                       'subject'=>'Test',
+ *                       'body'=>'Test',
+ *                   ),
+ *                   'methods'=>array(
+ *                       'setTo'=>array(array('receiver@domain.org', 'other@domain.org' => 'A name')),
+ *                       'setFrom'=>array(array('john@doe.com' => 'John Doe')),
+ *                   )
+ *               ),
+ *               'mailer'=>array(
+ *                   'class'=>'Swift_Mailer',
+ *                   'arguments'=>array(
+ *                       'transport'=>'%transport'
+ *                   ),
+ *                   'methods'=>array(
+ *                       'send'=>array('message'=>'%message'),
+ *                   )
+ *               )
+ *           )
+ *       )
+ *
+ * Config example - has nothing in common with real life - but it works.
+ * Workflow.
+ *
+ * Yii::app()->mail->mailer.
+ * 1) Init mail component.
+ * 2) DIC component adds components to config.
+ * 3) Starts lazy load of "mailer"
+ * 4) Tries to take  "transport" component for "mailer" __construct method
+ * 5) Starts lazy load of "transport"
+ * 6) Passes transport arguments into __construct method.
+ * 7) Fires transport methods after initialization, sets username and password
+ * 8) Mailer initialization
+ * 9) "Mailer" tries to take "message" component
+ * .......
+ *
  */
 abstract class GDICComponent extends CComponent implements IApplicationComponent
 {
@@ -82,8 +217,19 @@ abstract class GDICComponent extends CComponent implements IApplicationComponent
     }
 
     /**
+     * Destroy component
+     * @param string $name
+     * @return mixed|void
+     */
+    public function __unset($name)
+    {
+        if ($this->hasComponent($name))
+            unset($this->_components[$name]);
+    }
+
+    /**
      * Checks whether the named component exists.
-     * @param string $id application component ID
+     * @param string $id DIC component ID
      * @return boolean whether the named application component exists (including both loaded and disabled.)
      */
     public function hasComponent($id)
@@ -92,10 +238,11 @@ abstract class GDICComponent extends CComponent implements IApplicationComponent
     }
 
     /**
-     * Retrieves the named application component.
-     * @param string $id application component ID (case-sensitive)
+     * Retrieves the named DIC component.
+     * Creates component if not initialized, adds custom autoloader if specified.
+     * @param string $id DIC component ID (case-sensitive)
      * @param boolean $createIfNull whether to create the component if it doesn't exist yet.
-     * @return IApplicationComponent the application component instance, null if the application component is disabled or does not exist.
+     * @return Object the DIC component instance, null if does not exist.
      * @see hasComponent
      */
     public function getComponent($id, $createIfNull = true)
@@ -109,21 +256,24 @@ abstract class GDICComponent extends CComponent implements IApplicationComponent
             {
                 Yii::trace("Loading \"$id\" application component", 'system.CModule');
                 unset($config['enabled']);
-                $component = Yii::createComponent($config);
-                $component->init();
+
+                $this->parseAutoloader($config);
+
+                $component = $this->createComponent($config);
                 return $this->_components[$id] = $component;
             }
         }
     }
 
+
     /**
-     * Puts a component under the management of the module.
-     * The component will be initialized by calling its {@link CApplicationComponent::init() init()}
-     * method if it has not done so.
+     * Puts a component under the management of the DIC.
+     *
      * @param string $id component ID
-     * @param array|IApplicationComponent $component application component
-     * (either configuration array or instance). If this parameter is null,
-     * component will be unloaded from the module.
+     *
+     * @param array|object $component DIC component
+     * (either configuration array or instance).
+     *
      * @param boolean $merge whether to merge the new component configuration
      * with the existing one. Defaults to true, meaning the previously registered
      * component configuration with the same ID will be merged with the new configuration.
@@ -132,21 +282,12 @@ abstract class GDICComponent extends CComponent implements IApplicationComponent
      */
     public function setComponent($id, $component, $merge = true)
     {
-        if ($component === null)
-        {
-            unset($this->_components[$id]);
-            return;
-        }
-        elseif ($component instanceof IApplicationComponent)
+        if (is_object($component))
         {
             $this->_components[$id] = $component;
-
-            if (!$component->getIsInitialized())
-                $component->init();
-
-            return;
         }
-        elseif (isset($this->_components[$id]))
+
+        if (isset($this->_components[$id]))
         {
             if (isset($component['class']) && get_class($this->_components[$id]) !== $component['class'])
             {
@@ -176,7 +317,7 @@ abstract class GDICComponent extends CComponent implements IApplicationComponent
     }
 
     /**
-     * Returns the application components.
+     * Returns the DIC components.
      * @param boolean $loadedOnly whether to return the loaded components only. If this is set false,
      * then all components specified in the configuration will be returned, whether they are loaded or not.
      * Loaded components will be returned as objects, while unloaded components as configuration arrays.
@@ -194,7 +335,7 @@ abstract class GDICComponent extends CComponent implements IApplicationComponent
 
 
     /**
-     * Sets the application components.
+     * Sets the DIC components.
      *
      * When a configuration is used to specify a component, it should consist of
      * the component's initial property values (name-value pairs). Additionally,
@@ -224,10 +365,178 @@ abstract class GDICComponent extends CComponent implements IApplicationComponent
      * Defaults to true, meaning the previously registered component configuration of the same ID
      * will be merged with the new configuration. If false, the existing configuration will be replaced completely.
      */
-    public function setComponents($components, $merge = true)
+    public function setComponents(array $components, $merge = true)
     {
         foreach ($components as $id => $component)
             $this->setComponent($id, $component, $merge);
+    }
+
+    /**
+     * Creates an object and initializes it based on the given configuration.
+     *
+     * The specified configuration can be either a string or an array.
+     * If the former, the string is treated as the object type which can
+     * be either the class name or {@link YiiBase::getPathOfAlias class path alias}.
+     * If the latter, the 'class' element is treated as the object type,
+     * and the rest of the name-value pairs in the array are used to initialize
+     * the corresponding object properties.
+     *
+     * configuration array can have these keys:
+     * class -> component's class,
+     * arguments -> arguments used in component`s __construct method,
+     * methods -> methods which will be fired after component initialization.
+     *
+     * @param mixed $config the configuration. It can be either a string or an array.
+     * @throws CException
+     * @internal param array $args
+     * @return mixed the created object
+     */
+    public function createComponent($config)
+    {
+        if(is_string($config))
+        {
+            $type=$config;
+            $config=array();
+        }
+        elseif(isset($config['class']))
+        {
+            $type=$config['class'];
+            unset($config['class']);
+        }
+        else
+            throw new CException(Yii::t('yii','Object configuration must be an array containing a "class" element.'));
+
+        if(!class_exists($type,false))
+            $type=Yii::import($type,true);
+
+        $args = $this->parseArguments($config);
+        if(($n=count($args))>0)
+        {
+            if($n===1)
+                $object=new $type($args[0]);
+            elseif($n===2)
+                $object=new $type($args[0],$args[1]);
+            elseif($n===3)
+                $object=new $type($args[0],$args[1],$args[2]);
+            else
+            {
+                $class=new ReflectionClass($type);
+                // Note: ReflectionClass::newInstanceArgs() is available for PHP 5.1.3+
+                // $object=$class->newInstanceArgs($args);
+                $object=call_user_func_array(array($class,'newInstance'),$args);
+            }
+        }
+        else
+            $object=new $type;
+
+        foreach($config as $key=>$value)
+            $object->$key=$value;
+
+        if ($object instanceof IApplicationComponent)
+            $object->init();
+
+        $methods = $this->parseMethods($config);
+        foreach ($methods as $name=>$params)
+            call_user_func_array(array($object,$name),$params);
+
+        return $object;
+    }
+
+    /**
+     * @param $config
+     */
+    protected function parseAutoloader(&$config)
+    {
+        if (isset($config['autoloader']))
+        {
+            if (!isset($config['autoloader']['callback']))
+            {
+                $config['autoloader']['callback'] = $config['autoloader'];
+                $config['autoloader']['append'] = false;
+            }
+            else
+            {
+                $config['autoloader']['append'] = $config['autoloader']['append']?$config['autoloader']['append']:false;
+            }
+
+            Yii::registerAutoloader($config['autoloader']['callback'],$config['autoloader']['append']);
+
+            unset($config['autoloader']);
+        }
+    }
+
+    /**
+     * @param $config
+     * @return array
+     */
+    protected function parseArguments(&$config)
+    {
+        $args = array();
+        if (isset($config['arguments']))
+        {
+            $args = $this->parseArgumentsInner($config['arguments']);
+            unset($config['arguments']);
+        }
+
+        return $args;
+    }
+
+    /**
+     * Identifies dependencies with % sign in passed arguments.
+     * Works for "arguments" and "methods" config keys.
+     * @param $arguments
+     * @param bool $preserveKeys
+     * @return array
+     */
+    protected function parseArgumentsInner($arguments,$preserveKeys = false)
+    {
+        $args = array();
+        $i=0;
+        foreach ($arguments as $name=>$argument)
+        {
+            if ($preserveKeys)
+                $argumentName = $name;
+            else
+                $argumentName = $i;
+
+            if (is_array($argument))
+            {
+                $args[$argumentName] = $this->parseArgumentsInner($argument,true);
+            }
+            else
+            {
+                if (strpos($argument,'%')===0)
+                {
+                    $argument_name = str_replace('%','',$argument);
+                    $args[$argumentName] = $this->$argument_name;
+                }
+                else
+                    $args[$argumentName] = $argument;
+            }
+
+            $i++;
+        }
+        return $args;
+    }
+
+
+    /**
+     * @param $config
+     * @return array
+     */
+    protected function parseMethods(&$config)
+    {
+        $methods = array();
+        if (isset($config['methods']))
+        {
+            $methods = $config['methods'];
+            foreach ($config['methods'] as $name=>$arguments)
+            {
+                $methods[$name] = $this->parseArgumentsInner($arguments);
+            }
+            unset($config['methods']);
+        }
+        return $methods;
     }
 
 }

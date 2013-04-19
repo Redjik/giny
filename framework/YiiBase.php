@@ -854,6 +854,7 @@ class YiiBase
 
         //giny components
         'GDICComponent' => '/base/GDICComponent.php',
+        'GMailComponent' => '/mail/GMailComponent.php'
 	);
 }
 
