@@ -27,115 +27,6 @@
  * So if we specify php-doc property in DICBasedComponent class - auto complete will work in IDE
  * ex. Yii::app()->DICBasedComponent->firstComponent
  *
- * There are also some additional optional keys for component config array.
- * For now these keys are:
- *
- * 1) autoloader
- *
- * sets additional autoloader if we are using some external libraries which needed only for one component
- * still for now it is better to use autoladers in init method of DIC component
- * @see GMailComonent::init() for this example
- *
- * 'DICBasedComponent'=>array(
- *     'class'=>'ext.DICBasedComponent'
- *     'components'=>array(
- *         'firstComponent'=>array(
- *             'class'=>'ext.firstComponent',
- *             'autoloader'=>array('ClassName','method')
- *         )
- *     )
- * )
- *
- * there are also some additional optional params
- * 'autoloader'=>array('ClassName','method') is default implementation and autoloader is set before Yii autoloader
- *
- * 'autoloader'=>array('ClassName','method')
- * 'autoloader'=>array('callback'=>array('ClassName','method'))
- * 'autoloader'=>array('callback'=>array('ClassName','method'),'append'=>'false')
- * Previous 3 lines work identical.
- *
- * If we need to set autoloader AFTER Yii autoloader syntax is the following
- * 'autoloader'=>array('callback'=>array('ClassName','method'),'append'=>'true')
- *
- * for more info @see YiiBase::registerAutoloader()
- *
- * All implementation is a workaround wrapper for this method.
- *
- * 2) arguments
- *
- * sets arguments passed into __construct method of the component.
- * since we don't want to use Replication - we have to preserve the order of the params
- * params can have % sign in the beginning - that means that this param should be taken from current DIC
- *
- *  'mailer'=>array(
- *       'class'=>'Swift_Mailer',
- *       'arguments'=>array(
- *           'transport'=>'%transport'
- *       ),
- *   )
- *
- * in this example new Swift_Mailer instance is created and transport passed into __construct method.
- * transport should be another previously defined component or a public property of DIC
- *
- * 3) methods
- *
- * sets methods that should be run after class initialization.
- * if class is instance of IApplicationComponent then init() method is fired first
- * then goes these defined methods
- * method params with % are parsed in the same way as arguments
- *
- * ----------------------------------------------------------------------------------
- *         'mail' => array(
- *           'class'=>'GMailComponent',
- *           'components'=> array(
- *               'transport'=>array(
- *                   'class'=>'Swift_SmtpTransport',
- *                   'arguments'=>array(
- *                       'host'=>'smtp.example.org',
- *                       'port'=>25
- *                   ),
- *                   'methods'=>array(
- *                       'setUsername'=>array('username'),
- *                       'setPassword'=>array('password'),
- *                   ),
- *               ),
- *               'message'=>array(
- *                   'class'=>'Swift_Message',
- *                   'arguments'=>array(
- *                       'subject'=>'Test',
- *                       'body'=>'Test',
- *                   ),
- *                   'methods'=>array(
- *                       'setTo'=>array(array('receiver@domain.org', 'other@domain.org' => 'A name')),
- *                       'setFrom'=>array(array('john@doe.com' => 'John Doe')),
- *                   )
- *               ),
- *               'mailer'=>array(
- *                   'class'=>'Swift_Mailer',
- *                   'arguments'=>array(
- *                       'transport'=>'%transport'
- *                   ),
- *                   'methods'=>array(
- *                       'send'=>array('message'=>'%message'),
- *                   )
- *               )
- *           )
- *       )
- *
- * Config example - has nothing in common with real life - but it works.
- * Workflow.
- *
- * Yii::app()->mail->mailer.
- * 1) Init mail component.
- * 2) DIC component adds components to config.
- * 3) Starts lazy load of "mailer"
- * 4) Tries to take  "transport" component for "mailer" __construct method
- * 5) Starts lazy load of "transport"
- * 6) Passes transport arguments into __construct method.
- * 7) Fires transport methods after initialization, sets username and password
- * 8) Mailer initialization
- * 9) "Mailer" tries to take "message" component
- * .......
  *
  */
 abstract class GDICComponent extends CComponent implements IApplicationComponent
@@ -256,8 +147,6 @@ abstract class GDICComponent extends CComponent implements IApplicationComponent
             {
                 Yii::trace("Loading \"$id\" application component", 'system.CModule');
                 unset($config['enabled']);
-
-                $this->parseAutoloader($config);
 
                 $component = $this->createComponent($config);
                 $this->_components[$id] = $component;
@@ -412,17 +301,18 @@ abstract class GDICComponent extends CComponent implements IApplicationComponent
         if(!class_exists($type,false))
             $type=Yii::import($type,true);
 
-        $args = $this->parseArguments($config);
-        if(($n=count($args))>0)
+        if(($n=func_num_args())>1)
         {
-            if($n===1)
-                $object=new $type($args[0]);
-            elseif($n===2)
-                $object=new $type($args[0],$args[1]);
+            $args=func_get_args();
+            if($n===2)
+                $object=new $type($args[1]);
             elseif($n===3)
-                $object=new $type($args[0],$args[1],$args[2]);
+                $object=new $type($args[1],$args[2]);
+            elseif($n===4)
+                $object=new $type($args[1],$args[2],$args[3]);
             else
             {
+                unset($args[0]);
                 $class=new ReflectionClass($type);
                 // Note: ReflectionClass::newInstanceArgs() is available for PHP 5.1.3+
                 // $object=$class->newInstanceArgs($args);
@@ -438,118 +328,7 @@ abstract class GDICComponent extends CComponent implements IApplicationComponent
         if ($object instanceof IApplicationComponent)
             $object->init();
 
-        $methods = $this->parseMethods($config);
-        foreach ($methods as $name=>$params)
-            call_user_func_array(array($object,$name),$params);
-
         return $object;
-    }
-
-    /**
-     * @param $config
-     */
-    protected function parseAutoloader(&$config)
-    {
-        if (isset($config['autoloader']))
-        {
-            if (!isset($config['autoloader']['callback']))
-            {
-                $config['autoloader']['callback'] = $config['autoloader'];
-                $config['autoloader']['append'] = false;
-            }
-            else
-            {
-                $config['autoloader']['append'] = $config['autoloader']['append']?$config['autoloader']['append']:false;
-            }
-
-            Yii::registerAutoloader($config['autoloader']['callback'],$config['autoloader']['append']);
-
-            unset($config['autoloader']);
-        }
-    }
-
-    /**
-     * @param $config
-     * @return array
-     */
-    protected function parseArguments(&$config)
-    {
-        $args = array();
-        if (isset($config['arguments']))
-        {
-            $args = $this->parseArgumentsInner($config['arguments']);
-            unset($config['arguments']);
-        }
-
-        return $args;
-    }
-
-    /**
-     * Identifies dependencies with % sign in passed arguments.
-     * Works for "arguments" and "methods" config keys.
-     * @param $arguments
-     * @param bool $preserveKeys
-     * @return array
-     */
-    protected function parseArgumentsInner($arguments,$preserveKeys = false)
-    {
-        $args = array();
-        $i=0;
-        foreach ($arguments as $name=>$argument)
-        {
-            if ($preserveKeys)
-                $argumentName = $name;
-            else
-                $argumentName = $i;
-
-            if (is_array($argument))
-            {
-                $args[$argumentName] = $this->parseArgumentsInner($argument,true);
-            }
-            else
-            {
-                if (is_string($argument))
-                {
-                    if (strpos($argument,'%')===0)
-                    {
-                        $argument_name = str_replace('%','',$argument);
-                        $args[$argumentName] = $this->$argument_name;
-                    }
-                    else
-                    {
-                        $args[$argumentName] = $argument;
-                    }
-                }
-                else
-                {
-                    $args[$argumentName] = $argument;
-                }
-
-            }
-
-            $i++;
-        }
-        return $args;
-    }
-
-
-    /**
-     * @param $config
-     * @return array
-     */
-    protected function parseMethods(&$config)
-    {
-        $methods = array();
-        if (isset($config['methods']))
-        {
-            $methods = $config['methods'];
-            foreach ($config['methods'] as $name=>$arguments)
-            {
-                $methods[$name] = $this->parseArgumentsInner($arguments);
-            }
-            unset($config['methods']);
-        }
-        return $methods;
     }
 
 }

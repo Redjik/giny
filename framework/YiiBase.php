@@ -854,7 +854,7 @@ class YiiBase
 
         //giny components
         'GDICComponent' => '/base/GDICComponent.php',
-        'GMailComponent' => '/mail/GMailComponent.php'
+        'GMailComponent' => '/mail/GMailComponent.php',
         'IActiveRecord'=>'/../ARredone/Interfaces/IActiveRecord.php',
         'IDbConnectionAccessObject'=>'/../ARredone/Interfaces/IDbConnectionAccessObject.php',
         'IDbConnection'=>'/../ARredone/Interfaces/IDbConnection.php',

@@ -1,8 +1,5 @@
 <?php
 
-
-
-
 /**
  * Class GMailComponent
  *
@@ -14,9 +11,12 @@ class GMailComponent extends GDICComponent
     public function init()
     {
         Yii::setPathOfAlias('swift',__DIR__.'/../vendors/swift/lib/');
+        Yii::setPathOfAlias('gmail',__DIR__);
         Yii::import('swift.classes.Swift');
         Yii::registerAutoloader(array('Swift','autoload'),true);
         Yii::import('swift.swift_init',true);
+        Yii::import('gmail.GMailTransportComponent');
+
         parent::init();
     }
 
