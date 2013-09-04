@@ -56,4 +56,12 @@ interface IDbConnection
      * @see http://www.php.net/manual/en/function.PDO-setAttribute.php
      */
     public function setAttribute($name,$value);
+
+	/**
+	 * Quotes a string value for use in a query.
+	 * @param string $str string to be quoted
+	 * @return string the properly quoted string
+	 * @see http://www.php.net/manual/en/function.PDO-quote.php
+	 */
+	public function quoteValue($str);
 }

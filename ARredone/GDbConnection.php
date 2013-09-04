@@ -1,6 +1,6 @@
 <?php
 /**
- * CDbConnection class file
+ * GDbConnection class file
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @link http://www.yiiframework.com/
@@ -9,9 +9,9 @@
  */
 
 /**
- * CDbConnection represents a connection to a database.
+ * GDbConnection represents a connection to a database.
  *
- * CDbConnection works together with {@link CDbCommand}, {@link CDbDataReader}
+ * GDbConnection works together with {@link GDbCommand}, {@link CDbDataReader}
  * and {@link CDbTransaction} to provide data access to various DBMS
  * in a common set of APIs. They are a thin wrapper of the {@link http://www.php.net/manual/en/ref.pdo.php PDO}
  * PHP extension.
@@ -19,10 +19,10 @@
  * To establish a connection, set {@link setActive active} to true after
  * specifying {@link connectionString}, {@link username} and {@link password}.
  *
- * The following example shows how to create a CDbConnection instance and establish
+ * The following example shows how to create a GDbConnection instance and establish
  * the actual connection:
  * <pre>
- * $connection=new CDbConnection($dsn,$username,$password);
+ * $connection=new GDbConnection($dsn,$username,$password);
  * $connection->active=true;
  * </pre>
  *
@@ -45,33 +45,18 @@
  * $command->execute();
  * </pre>
  *
- * To use transaction, do like the following:
- * <pre>
- * $transaction=$connection->beginTransaction();
- * try
- * {
- *    $connection->createCommand($sql1)->execute();
- *    $connection->createCommand($sql2)->execute();
- *    //.... other SQL executions
- *    $transaction->commit();
- * }
- * catch(Exception $e)
- * {
- *    $transaction->rollback();
- * }
- * </pre>
  *
- * CDbConnection also provides a set of methods to support setting and querying
+ * GDbConnection also provides a set of methods to support setting and querying
  * of certain DBMS attributes, such as {@link getNullConversion nullConversion}.
  *
- * Since CDbConnection implements the interface IApplicationComponent, it can
+ * Since GDbConnection implements the interface IApplicationComponent, it can
  * be used as an application component and be configured in application configuration,
  * like the following,
  * <pre>
  * array(
  *     'components'=>array(
  *         'db'=>array(
- *             'class'=>'CDbConnection',
+ *             'class'=>'GDbConnection',
  *             'connectionString'=>'sqlite:path/to/dbfile',
  *         ),
  *     ),
@@ -80,9 +65,7 @@
  *
  * @property boolean $active Whether the DB connection is established.
  * @property PDO $pdoInstance The PDO instance, null if the connection is not established yet.
- * @property CDbTransaction $currentTransaction The currently active transaction. Null if no active transaction.
- * @property CDbSchema $schema The database schema for the current connection.
- * @property CDbCommandBuilder $commandBuilder The command builder.
+ * @property GDbCommandBuilder $commandBuilder The command builder.
  * @property string $lastInsertID The row ID of the last row inserted, or the last value retrieved from the sequence object.
  * @property mixed $columnCase The case of the column names.
  * @property mixed $nullConversion How the null and empty strings are converted.
@@ -103,9 +86,13 @@
  * @package system.db
  * @since 1.0
  */
-class CDbConnection extends CApplicationComponent
+class GDbConnection extends CApplicationComponent implements IDbConnection
 {
-	/**
+	const TYPE_MASTER = 'master';
+
+    const TYPE_SLAVE = 'slave';
+
+    /**
 	 * @var string The Data Source Name, or DSN, contains the information required to connect to the database.
 	 * @see http://www.php.net/manual/en/function.PDO-construct.php
 	 *
@@ -122,24 +109,7 @@ class CDbConnection extends CApplicationComponent
 	 * @var string the password for establishing DB connection. Defaults to empty string.
 	 */
 	public $password='';
-	/**
-	 * @var integer number of seconds that table metadata can remain valid in cache.
-	 * Use 0 or negative value to indicate not caching schema.
-	 * If greater than 0 and the primary cache is enabled, the table metadata will be cached.
-	 * @see schemaCachingExclude
-	 */
-	public $schemaCachingDuration=0;
-	/**
-	 * @var array list of tables whose metadata should NOT be cached. Defaults to empty array.
-	 * @see schemaCachingDuration
-	 */
-	public $schemaCachingExclude=array();
-	/**
-	 * @var string the ID of the cache application component that is used to cache the table metadata.
-	 * Defaults to 'cache' which refers to the primary cache application component.
-	 * Set this property to false if you want to disable caching table metadata.
-	 */
-	public $schemaCacheID='cache';
+
 	/**
 	 * @var integer number of seconds that query results can remain valid in cache.
 	 * Use 0 or negative value to indicate not caching query results (the default behavior).
@@ -177,12 +147,7 @@ class CDbConnection extends CApplicationComponent
 	 * @since 1.1.7
 	 */
 	public $queryCacheID='cache';
-	/**
-	 * @var boolean whether the database connection should be automatically established
-	 * the component is being initialized. Defaults to true. Note, this property is only
-	 * effective when the CDbConnection object is used as an application component.
-	 */
-	public $autoConnect=true;
+
 	/**
 	 * @var string the charset used for database connection. The property is only used
 	 * for MySQL and PostgreSQL databases. Defaults to null, meaning using default charset
@@ -217,7 +182,7 @@ class CDbConnection extends CApplicationComponent
 	public $enableProfiling=false;
 	/**
 	 * @var string the default prefix for table names. Defaults to null, meaning no table prefix.
-	 * By setting this property, any token like '{{tableName}}' in {@link CDbCommand::text} will
+	 * By setting this property, any token like '{{tableName}}' in {@link GDbCommand::text} will
 	 * be replaced by 'prefixTableName', where 'prefix' refers to this property value.
 	 * @since 1.1.0
 	 */
@@ -227,28 +192,14 @@ class CDbConnection extends CApplicationComponent
 	 * @since 1.1.1
 	 */
 	public $initSQLs;
-	/**
-	 * @var array mapping between PDO driver and schema class name.
-	 * A schema class can be specified using path alias.
-	 * @since 1.1.6
-	 */
-	public $driverMap=array(
-		'pgsql'=>'CPgsqlSchema',    // PostgreSQL
-		'mysqli'=>'CMysqlSchema',   // MySQL
-		'mysql'=>'CMysqlSchema',    // MySQL
-		'sqlite'=>'CSqliteSchema',  // sqlite 3
-		'sqlite2'=>'CSqliteSchema', // sqlite 2
-		'mssql'=>'CMssqlSchema',    // Mssql driver on windows hosts
-		'dblib'=>'CMssqlSchema',    // dblib drivers on linux (and maybe others os) hosts
-		'sqlsrv'=>'CMssqlSchema',   // Mssql
-		'oci'=>'COciSchema',        // Oracle driver
-	);
 
 	/**
 	 * @var string Custom PDO wrapper class.
 	 * @since 1.1.8
 	 */
 	public $pdoClass = 'PDO';
+
+    public $type = self::TYPE_MASTER;
 
 	private $_attributes=array();
 	private $_active=false;
@@ -284,6 +235,91 @@ class CDbConnection extends CApplicationComponent
 		return array_keys(get_object_vars($this));
 	}
 
+    /**
+     * @return string
+     */
+    public function getConnectionString()
+    {
+        return $this->connectionString;
+    }
+
+    public function getUserName()
+    {
+        return $this->username;
+    }
+
+    /**
+     * @return string
+     */
+    public function getPassword()
+    {
+        return $this->password;
+    }
+
+    /**
+     * @return int
+     */
+    public function getQueryCachingDuration()
+    {
+        return $this->queryCachingDuration;
+    }
+
+    /**
+     * @param int $queryCachingDuration
+     */
+    public function setQueryCachingDuration($queryCachingDuration)
+    {
+        $this->queryCachingDuration = $queryCachingDuration;
+    }
+
+    /**
+     * @return int
+     */
+    public function getQueryCachingCount()
+    {
+        return $this->queryCachingCount;
+    }
+
+    /**
+     * @param int $queryCachingCount
+     */
+    public function setQueryCachingCount($queryCachingCount)
+    {
+        $this->queryCachingCount = $queryCachingCount;
+    }
+
+    /**
+     * @return string
+     */
+    public function getQueryCacheID()
+    {
+        return $this->queryCacheID;
+    }
+
+    /**
+     * @return string
+     */
+    public function getTablePrefix()
+    {
+        return $this->tablePrefix;
+    }
+
+    /**
+     * @return boolean
+     */
+    public function getEnableParamLogging()
+    {
+        return $this->enableParamLogging;
+    }
+
+    /**
+     * @return boolean
+     */
+    public function getEnableProfiling()
+    {
+        return $this->enableProfiling;
+    }
+
 	/**
 	 * Returns a list of available PDO drivers.
 	 * @return array list of available PDO drivers
@@ -297,15 +333,13 @@ class CDbConnection extends CApplicationComponent
 	/**
 	 * Initializes the component.
 	 * This method is required by {@link IApplicationComponent} and is invoked by application
-	 * when the CDbConnection is used as an application component.
+	 * when the GDbConnection is used as an application component.
 	 * If you override this method, make sure to call the parent implementation
 	 * so that the component can be marked as initialized.
 	 */
 	public function init()
 	{
 		parent::init();
-		if($this->autoConnect)
-			$this->setActive(true);
 	}
 
 	/**
@@ -347,7 +381,7 @@ class CDbConnection extends CApplicationComponent
 	 * the query results into cache.
 	 * @param integer $queryCount number of SQL queries that need to be cached after calling this method. Defaults to 1,
 	 * meaning that the next SQL query will be cached.
-	 * @return CDbConnection the connection instance itself.
+	 * @return GDbConnection the connection instance itself.
 	 * @since 1.1.7
 	 */
 	public function cache($duration, $dependency=null, $queryCount=1)
@@ -366,11 +400,12 @@ class CDbConnection extends CApplicationComponent
 	{
 		if($this->_pdo===null)
 		{
-			if(empty($this->connectionString))
-				throw new CDbException('CDbConnection.connectionString cannot be empty.');
+			$connectionString = $this->getConnectionString();
+            if(empty($connectionString))
+				throw new CDbException('GDbConnection.connectionString cannot be empty.');
 			try
 			{
-				Yii::trace('Opening DB connection','system.db.CDbConnection');
+				Yii::trace('Opening DB connection','system.db.GDbConnection');
 				$this->_pdo=$this->createPdoInstance();
 				$this->initConnection($this->_pdo);
 				$this->_active=true;
@@ -379,13 +414,13 @@ class CDbConnection extends CApplicationComponent
 			{
 				if(YII_DEBUG)
 				{
-					throw new CDbException('CDbConnection failed to open the DB connection: '.
+					throw new CDbException('GDbConnection failed to open the DB connection: '.
 						$e->getMessage(),(int)$e->getCode(),$e->errorInfo);
 				}
 				else
 				{
 					Yii::log($e->getMessage(),CLogger::LEVEL_ERROR,'exception.CDbException');
-					throw new CDbException('CDbConnection failed to open the DB connection.',(int)$e->getCode(),$e->errorInfo);
+					throw new CDbException('GDbConnection failed to open the DB connection.',(int)$e->getCode(),$e->errorInfo);
 				}
 			}
 		}
@@ -397,7 +432,7 @@ class CDbConnection extends CApplicationComponent
 	 */
 	protected function close()
 	{
-		Yii::trace('Closing DB connection','system.db.CDbConnection');
+		Yii::trace('Closing DB connection','system.db.GDbConnection');
 		$this->_pdo=null;
 		$this->_active=false;
 		$this->_schema=null;
@@ -407,15 +442,16 @@ class CDbConnection extends CApplicationComponent
 	 * Creates the PDO instance.
 	 * When some functionalities are missing in the pdo driver, we may use
 	 * an adapter class to provide them.
-	 * @throws CDbException when failed to open DB connection
+	 *
+	 * @throws PDOException
 	 * @return PDO the pdo instance
 	 */
 	protected function createPdoInstance()
 	{
 		$pdoClass=$this->pdoClass;
-		if(($pos=strpos($this->connectionString,':'))!==false)
+		if(($pos=strpos($this->getConnectionString(),':'))!==false)
 		{
-			$driver=strtolower(substr($this->connectionString,0,$pos));
+			$driver=strtolower(substr($this->getConnectionString(),0,$pos));
 			if($driver==='mssql' || $driver==='dblib')
 				$pdoClass='CMssqlPdoAdapter';
 			elseif($driver==='sqlsrv')
@@ -423,13 +459,10 @@ class CDbConnection extends CApplicationComponent
 		}
 
 		if(!class_exists($pdoClass))
-			throw new CDbException(Yii::t('yii','CDbConnection is unable to find PDO class "{className}". Make sure PDO is installed correctly.',
+			throw new PDOException(Yii::t('yii','GDbConnection is unable to find PDO class "{className}". Make sure PDO is installed correctly.',
 				array('{className}'=>$pdoClass)));
 
-		@$instance=new $pdoClass($this->connectionString,$this->username,$this->password,$this->_attributes);
-
-		if(!$instance)
-			throw new CDbException(Yii::t('yii','CDbConnection failed to open the DB connection.'));
+		$instance=new $pdoClass($this->getConnectionString(),$this->getUserName(),$this->getPassword(),$this->_attributes);
 
 		return $instance;
 	}
@@ -464,76 +497,8 @@ class CDbConnection extends CApplicationComponent
 	 */
 	public function getPdoInstance()
 	{
-		return $this->_pdo;
-	}
-
-	/**
-	 * Creates a command for execution.
-	 * @param mixed $query the DB query to be executed. This can be either a string representing a SQL statement,
-	 * or an array representing different fragments of a SQL statement. Please refer to {@link CDbCommand::__construct}
-	 * for more details about how to pass an array as the query. If this parameter is not given,
-	 * you will have to call query builder methods of {@link CDbCommand} to build the DB query.
-	 * @return CDbCommand the DB command
-	 */
-	public function createCommand($query=null)
-	{
 		$this->setActive(true);
-		return new CDbCommand($this,$query);
-	}
-
-	/**
-	 * Returns the currently active transaction.
-	 * @return CDbTransaction the currently active transaction. Null if no active transaction.
-	 */
-	public function getCurrentTransaction()
-	{
-		if($this->_transaction!==null)
-		{
-			if($this->_transaction->getActive())
-				return $this->_transaction;
-		}
-		return null;
-	}
-
-	/**
-	 * Starts a transaction.
-	 * @return CDbTransaction the transaction initiated
-	 */
-	public function beginTransaction()
-	{
-		Yii::trace('Starting transaction','system.db.CDbConnection');
-		$this->setActive(true);
-		$this->_pdo->beginTransaction();
-		return $this->_transaction=new CDbTransaction($this);
-	}
-
-	/**
-	 * Returns the database schema for the current connection
-	 * @throws CDbException if CDbConnection does not support reading schema for specified database driver
-	 * @return CDbSchema the database schema for the current connection
-	 */
-	public function getSchema()
-	{
-		if($this->_schema!==null)
-			return $this->_schema;
-		else
-		{
-			$driver=$this->getDriverName();
-			if(isset($this->driverMap[$driver]))
-				return $this->_schema=Yii::createComponent($this->driverMap[$driver], $this);
-			else
-				throw new CDbException(Yii::t('yii','CDbConnection does not support reading schema for {driver} database.',
-					array('{driver}'=>$driver)));
-		}
-	}
-
-	/**
-	 * Returns the SQL command builder for the current DB connection.
-	 * @return CDbCommandBuilder the command builder
-	 */
-	public function getCommandBuilder()
-	{
-		return $this->getSchema()->getCommandBuilder();
+        return $this->_pdo;
 	}
 
 	/**
@@ -544,8 +509,7 @@ class CDbConnection extends CApplicationComponent
 	 */
 	public function getLastInsertID($sequenceName='')
 	{
-		$this->setActive(true);
-		return $this->_pdo->lastInsertId($sequenceName);
+		return $this->getPdoInstance()->lastInsertId($sequenceName);
 	}
 
 	/**
@@ -559,51 +523,10 @@ class CDbConnection extends CApplicationComponent
 		if(is_int($str) || is_float($str))
 			return $str;
 
-		$this->setActive(true);
-		if(($value=$this->_pdo->quote($str))!==false)
+		if(($value=$this->getPdoInstance()->quote($str))!==false)
 			return $value;
 		else  // the driver doesn't support quote (e.g. oci)
 			return "'" . addcslashes(str_replace("'", "''", $str), "\000\n\r\\\032") . "'";
-	}
-
-	/**
-	 * Quotes a table name for use in a query.
-	 * If the table name contains schema prefix, the prefix will also be properly quoted.
-	 * @param string $name table name
-	 * @return string the properly quoted table name
-	 */
-	public function quoteTableName($name)
-	{
-		return $this->getSchema()->quoteTableName($name);
-	}
-
-	/**
-	 * Quotes a column name for use in a query.
-	 * If the column name contains prefix, the prefix will also be properly quoted.
-	 * @param string $name column name
-	 * @return string the properly quoted column name
-	 */
-	public function quoteColumnName($name)
-	{
-		return $this->getSchema()->quoteColumnName($name);
-	}
-
-	/**
-	 * Determines the PDO type for the specified PHP type.
-	 * @param string $type The PHP type (obtained by gettype() call).
-	 * @return integer the corresponding PDO type
-	 */
-	public function getPdoType($type)
-	{
-		static $map=array
-		(
-			'boolean'=>PDO::PARAM_BOOL,
-			'integer'=>PDO::PARAM_INT,
-			'string'=>PDO::PARAM_STR,
-			'resource'=>PDO::PARAM_LOB,
-			'NULL'=>PDO::PARAM_NULL,
-		);
-		return isset($map[$type]) ? $map[$type] : PDO::PARAM_STR;
 	}
 
 	/**
@@ -683,19 +606,10 @@ class CDbConnection extends CApplicationComponent
 	 */
 	public function setPersistent($value)
 	{
-		return $this->setAttribute(PDO::ATTR_PERSISTENT,$value);
+		$this->setAttribute(PDO::ATTR_PERSISTENT,$value);
 	}
 
-	/**
-	 * Returns the name of the DB driver
-	 * @return string name of the DB driver
-	 */
-	public function getDriverName()
-	{
-		if(($pos=strpos($this->connectionString, ':'))!==false)
-			return strtolower(substr($this->connectionString, 0, $pos));
-		// return $this->getAttribute(PDO::ATTR_DRIVER_NAME);
-	}
+
 
 	/**
 	 * Returns the version information of the DB driver.
@@ -760,8 +674,7 @@ class CDbConnection extends CApplicationComponent
 	 */
 	public function getAttribute($name)
 	{
-		$this->setActive(true);
-		return $this->_pdo->getAttribute($name);
+		return $this->getPdoInstance()->getAttribute($name);
 	}
 
 	/**
@@ -772,8 +685,8 @@ class CDbConnection extends CApplicationComponent
 	 */
 	public function setAttribute($name,$value)
 	{
-		if($this->_pdo instanceof PDO)
-			$this->_pdo->setAttribute($name,$value);
+		if($this->getPdoInstance() instanceof PDO)
+			$this->getPdoInstance()->setAttribute($name,$value);
 		else
 			$this->_attributes[$name]=$value;
 	}
@@ -812,10 +725,10 @@ class CDbConnection extends CApplicationComponent
 	public function getStats()
 	{
 		$logger=Yii::getLogger();
-		$timings=$logger->getProfilingResults(null,'system.db.CDbCommand.query');
+		$timings=$logger->getProfilingResults(null,'system.db.GDbCommand.query');
 		$count=count($timings);
 		$time=array_sum($timings);
-		$timings=$logger->getProfilingResults(null,'system.db.CDbCommand.execute');
+		$timings=$logger->getProfilingResults(null,'system.db.GDbCommand.execute');
 		$count+=count($timings);
 		$time+=array_sum($timings);
 		return array($count,$time);

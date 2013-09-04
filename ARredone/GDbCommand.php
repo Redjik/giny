@@ -3,7 +3,7 @@
 class GDbCommand extends CComponent
 {
     /**
-     * @var IDbConnectionAccessObject
+     * @var GConnectionManager
      */
     protected  $_pool;
     protected $_forceMaster;
@@ -25,7 +25,7 @@ class GDbCommand extends CComponent
 
     /**
      * Constructor.
-     * @param IDbConnectionAccessObject $connectionPool the database connection
+     * @param GConnectionManager $connectionPool the database connection
      * @param mixed $query the DB query to be executed. This can be either
      * a string representing a SQL statement, or an array whose name-value pairs
      * will be used to set the corresponding properties of the created command object.
@@ -46,7 +46,7 @@ class GDbCommand extends CComponent
      * {@link setFetchMode FetchMode}. See {@link http://www.php.net/manual/en/function.PDOStatement-setFetchMode.php}
      * for more details.
      */
-    public function __construct(IDbConnectionAccessObject $connectionPool,$query,$forceMaster=false)
+    public function __construct(GConnectionManager $connectionPool,$query,$forceMaster=false)
     {
         $this->_pool = $connectionPool;
         $this->_forceMaster = $forceMaster;
@@ -65,7 +65,7 @@ class GDbCommand extends CComponent
 
     /**
      * Set the default fetch mode for this statement
-     * @return CDbCommand
+     * @return GDbCommand
      * @see http://www.php.net/manual/en/function.PDOStatement-setFetchMode.php
      * @since 1.1.7
      */
@@ -81,7 +81,7 @@ class GDbCommand extends CComponent
      * This method is mainly used when a command object is being reused
      * multiple times for building different queries.
      * Calling this method will clean up all internal states of the command object.
-     * @return CDbCommand this command instance
+     * @return GDbCommand this command instance
      * @since 1.1.6
      */
     public function reset()
@@ -106,7 +106,7 @@ class GDbCommand extends CComponent
      * Specifies the SQL statement to be executed.
      * Any previous execution will be terminated or cancel.
      * @param string $value the SQL statement to be executed
-     * @return CDbCommand this command instance
+     * @return GDbCommand this command instance
      */
     public function setText($value)
     {
@@ -122,7 +122,7 @@ class GDbCommand extends CComponent
     }
 
     /**
-     * @return CDbConnection the connection associated with this command
+     * @return IDbConnection the connection associated with this command
      */
     public function getConnection()
     {
@@ -144,7 +144,7 @@ class GDbCommand extends CComponent
      * this may improve performance.
      * For SQL statement with binding parameters, this method is invoked
      * automatically.
-     * @throws CDbException if CDbCommand failed to prepare the SQL statement
+     * @throws CDbException if GDbCommand failed to prepare the SQL statement
      */
     public function prepare()
     {
@@ -164,9 +164,9 @@ class GDbCommand extends CComponent
             }
             catch(Exception $e)
             {
-                Yii::log('Error in preparing SQL: '.$this->getText(),CLogger::LEVEL_ERROR,'system.db.CDbCommand');
+                Yii::log('Error in preparing SQL: '.$this->getText(),CLogger::LEVEL_ERROR,'system.db.GDbCommand');
                 $errorInfo=$e instanceof PDOException ? $e->errorInfo : null;
-                throw new CDbException(Yii::t('yii','CDbCommand failed to prepare the SQL statement: {error}',
+                throw new CDbException(Yii::t('yii','GDbCommand failed to prepare the SQL statement: {error}',
                     array('{error}'=>$e->getMessage())),(int)$e->getCode(),$errorInfo);
             }
         }
@@ -193,7 +193,7 @@ class GDbCommand extends CComponent
      * @param integer $dataType SQL data type of the parameter. If null, the type is determined by the PHP type of the value.
      * @param integer $length length of the data type
      * @param mixed $driverOptions the driver-specific options (this is available since version 1.1.6)
-     * @return CDbCommand the current command being executed
+     * @return GDbCommand the current command being executed
      * @see http://www.php.net/manual/en/function.PDOStatement-bindParam.php
      */
     public function bindParam($name, &$value, $dataType=null, $length=null, $driverOptions=null)
@@ -226,7 +226,7 @@ class GDbCommand extends CComponent
      * placeholders, this will be the 1-indexed position of the parameter.
      * @param mixed $value The value to bind to the parameter
      * @param integer $dataType SQL data type of the parameter. If null, the type is determined by the PHP type of the value.
-     * @return CDbCommand the current command being executed
+     * @return GDbCommand the current command being executed
      * @see http://www.php.net/manual/en/function.PDOStatement-bindValue.php
      */
     public function bindValue($name, $value, $dataType=null)
@@ -254,7 +254,7 @@ class GDbCommand extends CComponent
      * @param array $values the values to be bound. This must be given in terms of an associative
      * array with array keys being the parameter names, and array values the corresponding parameter values.
      * For example, <code>array(':name'=>'John', ':age'=>25)</code>.
-     * @return CDbCommand the current command being executed
+     * @return GDbCommand the current command being executed
      * @since 1.1.5
      */
     public function bindValues($values)
@@ -281,7 +281,12 @@ class GDbCommand extends CComponent
      */
     public function execute($params=array())
     {
-        $this->getWriteConnection();
+        $this->setConnectionType(true);
+
+		if ($this->_pool->isOtherDbTransactionStarted()){
+			throw new CDbException('You can not save to other DB during transaction');
+		}
+
         $this->checkTablePrefix();
 
         if($this->_connection->getEnableParamLogging() && ($pars=array_merge($this->_paramLog,$params))!==array())
@@ -293,11 +298,11 @@ class GDbCommand extends CComponent
         }
         else
             $par='';
-        Yii::trace('Executing SQL: '.$this->getText().$par,'system.db.CDbCommand');
+        Yii::trace('Executing SQL: '.$this->getText().$par,'system.db.GDbCommand');
         try
         {
             if($this->_connection->getEnableProfiling())
-                Yii::beginProfile('system.db.CDbCommand.execute('.$this->getText().$par.')','system.db.CDbCommand.execute');
+                Yii::beginProfile('system.db.GDbCommand.execute('.$this->getText().$par.')','system.db.GDbCommand.execute');
 
             $this->prepare();
             if($params===array())
@@ -307,24 +312,24 @@ class GDbCommand extends CComponent
             $n=$this->_statement->rowCount();
 
             if($this->_connection->getEnableProfiling())
-                Yii::endProfile('system.db.CDbCommand.execute('.$this->getText().$par.')','system.db.CDbCommand.execute');
+                Yii::endProfile('system.db.GDbCommand.execute('.$this->getText().$par.')','system.db.GDbCommand.execute');
 
             return $n;
         }
         catch(Exception $e)
         {
             if($this->_connection->getEnableProfiling())
-                Yii::endProfile('system.db.CDbCommand.execute('.$this->getText().$par.')','system.db.CDbCommand.execute');
+                Yii::endProfile('system.db.GDbCommand.execute('.$this->getText().$par.')','system.db.GDbCommand.execute');
 
             $errorInfo=$e instanceof PDOException ? $e->errorInfo : null;
             $message=$e->getMessage();
-            Yii::log(Yii::t('yii','CDbCommand::execute() failed: {error}. The SQL statement executed was: {sql}.',
-                array('{error}'=>$message, '{sql}'=>$this->getText().$par)),CLogger::LEVEL_ERROR,'system.db.CDbCommand');
+            Yii::log(Yii::t('yii','GDbCommand::execute() failed: {error}. The SQL statement executed was: {sql}.',
+                array('{error}'=>$message, '{sql}'=>$this->getText().$par)),CLogger::LEVEL_ERROR,'system.db.GDbCommand');
 
             if(YII_DEBUG)
                 $message.='. The SQL statement executed was: '.$this->getText().$par;
 
-            throw new CDbException(Yii::t('yii','CDbCommand failed to execute the SQL statement: {error}',
+            throw new CDbException(Yii::t('yii','GDbCommand failed to execute the SQL statement: {error}',
                 array('{error}'=>$message)),(int)$e->getCode(),$errorInfo);
         }
     }
@@ -433,12 +438,12 @@ class GDbCommand extends CComponent
      * you cannot bind parameters or values using {@link bindParam} or {@link bindValue}, and vice versa.
      * Please also note that all values are treated as strings in this case, if you need them to be handled as
      * their real data types, you have to use {@link bindParam} or {@link bindValue} instead.
-     * @throws CDbException if CDbCommand failed to execute the SQL statement
+     * @throws CDbException if GDbCommand failed to execute the SQL statement
      * @return mixed the method execution result
      */
     private function queryInternal($method,$mode,$params=array())
     {
-        $this->getReadConnection();
+        $this->setConnectionType();
         $this->checkTablePrefix();
         if($this->_connection->getEnableParamLogging() && ($pars=array_merge($this->_paramLog,$params))!==array())
         {
@@ -450,7 +455,7 @@ class GDbCommand extends CComponent
         else
             $par='';
 
-        Yii::trace('Querying SQL: '.$this->getText().$par,'system.db.CDbCommand');
+        Yii::trace('Querying SQL: '.$this->getText().$par,'system.db.GDbCommand');
 
         if($this->_connection->getQueryCachingCount()>0 && $method!==''
            && $this->_connection->getQueryCachingDuration()>0
@@ -463,7 +468,7 @@ class GDbCommand extends CComponent
             /** @var $cache CCache */
             if(($result=$cache->get($cacheKey))!==false)
             {
-                Yii::trace('Query result found in cache','system.db.CDbCommand');
+                Yii::trace('Query result found in cache','system.db.GDbCommand');
                 return $result[0];
             }
         }
@@ -471,7 +476,7 @@ class GDbCommand extends CComponent
         try
         {
             if($this->_connection->getEnableProfiling())
-                Yii::beginProfile('system.db.CDbCommand.query('.$this->getText().$par.')','system.db.CDbCommand.query');
+                Yii::beginProfile('system.db.GDbCommand.query('.$this->getText().$par.')','system.db.GDbCommand.query');
 
             $this->prepare();
             if($params===array())
@@ -490,7 +495,7 @@ class GDbCommand extends CComponent
             }
 
             if($this->_connection->getEnableProfiling())
-                Yii::endProfile('system.db.CDbCommand.query('.$this->getText().$par.')','system.db.CDbCommand.query');
+                Yii::endProfile('system.db.GDbCommand.query('.$this->getText().$par.')','system.db.GDbCommand.query');
 
             if(isset($cache,$cacheKey))
                 $cache->set($cacheKey, array($result), $this->_connection->getQueryCachingDuration(), $this->_connection->getQueryCachingDuration());
@@ -500,17 +505,17 @@ class GDbCommand extends CComponent
         catch(Exception $e)
         {
             if($this->_connection->getEnableProfiling())
-                Yii::endProfile('system.db.CDbCommand.query('.$this->getText().$par.')','system.db.CDbCommand.query');
+                Yii::endProfile('system.db.GDbCommand.query('.$this->getText().$par.')','system.db.GDbCommand.query');
 
             $errorInfo=$e instanceof PDOException ? $e->errorInfo : null;
             $message=$e->getMessage();
-            Yii::log(Yii::t('yii','CDbCommand::{method}() failed: {error}. The SQL statement executed was: {sql}.',
-                array('{method}'=>$method, '{error}'=>$message, '{sql}'=>$this->getText().$par)),CLogger::LEVEL_ERROR,'system.db.CDbCommand');
+            Yii::log(Yii::t('yii','GDbCommand::{method}() failed: {error}. The SQL statement executed was: {sql}.',
+                array('{method}'=>$method, '{error}'=>$message, '{sql}'=>$this->getText().$par)),CLogger::LEVEL_ERROR,'system.db.GDbCommand');
 
             if(YII_DEBUG)
                 $message.='. The SQL statement executed was: '.$this->getText().$par;
 
-            throw new CDbException(Yii::t('yii','CDbCommand failed to execute the SQL statement: {error}',
+            throw new CDbException(Yii::t('yii','GDbCommand failed to execute the SQL statement: {error}',
                 array('{error}'=>$message)),(int)$e->getCode(),$errorInfo);
         }
     }
@@ -518,7 +523,7 @@ class GDbCommand extends CComponent
 
 
     /**
-     * @return CDbCommand
+     * @return GDbCommand
      */
     public function forceMaster()
     {
@@ -527,7 +532,7 @@ class GDbCommand extends CComponent
     }
 
     /**
-     * @return CDbCommand
+     * @return GDbCommand
      */
     public function unsetForceMaster()
     {
@@ -535,13 +540,17 @@ class GDbCommand extends CComponent
         return $this;
     }
 
-    protected function getReadConnection()
-    {
-        $this->_connection = $this->_pool->getReadConnection($this->_forceMaster);
-    }
+	/**
+	 * Sets connection type
+	 * @param bool $write true for write | false for read
+	 */
+	protected function setConnectionType($write = false)
+	{
+		if ($write){
+			$this->_connection = $this->_pool->getWriteConnection();
+		}else{
+			$this->_connection = $this->_pool->getReadConnection($this->_forceMaster);
+		}
+	}
 
-    protected function getWriteConnection()
-    {
-        $this->_connection = $this->_pool->getWriteConnection();
-    }
 }

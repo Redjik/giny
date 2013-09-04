@@ -2,7 +2,24 @@
 
 class GDbQueryHelper
 {
-    /**
+	/**
+	 * @var array mapping between PDO driver and schema class name.
+	 * A schema class can be specified using path alias.
+	 * @since 1.1.6
+	 */
+	protected static $driverMap=array(
+		'pgsql'=>'Pgsql',    // PostgreSQL
+		'mysqli'=>'Mysql',   // MySQL
+		'mysql'=>'Mysql',    // MySQL
+		'sqlite'=>'Sqlite',  // sqlite 3
+		'sqlite2'=>'Sqlite', // sqlite 2
+		'mssql'=>'Mssql',    // Mssql driver on windows hosts
+		'dblib'=>'Mssql',    // dblib drivers on linux (and maybe others os) hosts
+		'sqlsrv'=>'Mssql',   // Mssql
+		'oci'=>'Oci',        // Oracle driver
+	);
+
+	/**
      * Determines the PDO type for the specified PHP type.
      * @param string $type The PHP type (obtained by gettype() call).
      * @return integer the corresponding PDO type
@@ -106,4 +123,23 @@ class GDbQueryHelper
         else
             return $sql;
     }
+
+	/**
+	 * Returns the name of the DB driver
+	 * @param  string $connectionString
+	 * @throws CDbException
+	 * @return string name of the DB driver
+	 */
+	public static function getDriverName($connectionString)
+	{
+
+		if(($pos=strpos($connectionString, ':'))!==false) {
+			$driver = strtolower(substr($connectionString, 0, $pos));
+			if(isset(self::$driverMap[$driver])){
+				return self::$driverMap[$driver];
+			}
+		}
+
+		throw new CDbException(Yii::t('yii','CDbConnection does not support reading schema for your database.'));
+	}
 }

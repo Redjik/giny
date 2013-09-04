@@ -1,6 +1,6 @@
 <?php
 /**
- * CSqliteSchema class file.
+ * GSqliteSchema class file.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @link http://www.yiiframework.com/
@@ -9,13 +9,13 @@
  */
 
 /**
- * CSqliteSchema is the class for retrieving metadata information from a SQLite (2/3) database.
+ * GSqliteSchema is the class for retrieving metadata information from a SQLite (2/3) database.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @package system.db.schema.sqlite
  * @since 1.0
  */
-class CSqliteSchema extends CDbSchema
+class GSqliteSchema extends GDbSchema
 {
 	/**
 	 * @var array the abstract column types mapped to physical column types.
@@ -51,13 +51,13 @@ class CSqliteSchema extends CDbSchema
 		if($table->sequenceName!==null)
 		{
 			if($value===null)
-				$value=$this->getDbConnection()->createCommand("SELECT MAX(`{$table->primaryKey}`) FROM {$table->rawName}")->queryScalar();
+				$value=$this->getPool()->createCommand("SELECT MAX(`{$table->primaryKey}`) FROM {$table->rawName}")->queryScalar();
 			else
 				$value=(int)$value-1;
 			try
 			{
 				// it's possible sqlite_sequence does not exist
-				$this->getDbConnection()->createCommand("UPDATE sqlite_sequence SET seq='$value' WHERE name='{$table->name}'")->execute();
+				$this->getPool()->createCommand("UPDATE sqlite_sequence SET seq='$value' WHERE name='{$table->name}'")->execute();
 			}
 			catch(Exception $e)
 			{
@@ -85,16 +85,7 @@ class CSqliteSchema extends CDbSchema
 	protected function findTableNames($schema='')
 	{
 		$sql="SELECT DISTINCT tbl_name FROM sqlite_master WHERE tbl_name<>'sqlite_sequence'";
-		return $this->getDbConnection()->createCommand($sql)->queryColumn();
-	}
-
-	/**
-	 * Creates a command builder for the database.
-	 * @return CSqliteCommandBuilder command builder instance
-	 */
-	protected function createCommandBuilder()
-	{
-		return new CSqliteCommandBuilder($this);
+		return $this->getPool()->createCommand($sql)->queryColumn();
 	}
 
 	/**
@@ -125,7 +116,7 @@ class CSqliteSchema extends CDbSchema
 	protected function findColumns($table)
 	{
 		$sql="PRAGMA table_info({$table->rawName})";
-		$columns=$this->getDbConnection()->createCommand($sql)->queryAll();
+		$columns=$this->getPool()->createCommand($sql)->queryAll();
 		if(empty($columns))
 			return false;
 
@@ -160,7 +151,7 @@ class CSqliteSchema extends CDbSchema
 	{
 		$foreignKeys=array();
 		$sql="PRAGMA foreign_key_list({$table->rawName})";
-		$keys=$this->getDbConnection()->createCommand($sql)->queryAll();
+		$keys=$this->getPool()->createCommand($sql)->queryAll();
 		foreach($keys as $key)
 		{
 			$column=$table->columns[$key['from']];
@@ -212,75 +203,80 @@ class CSqliteSchema extends CDbSchema
 		return "DELETE FROM ".$this->quoteTableName($table);
 	}
 
-	/**
-	 * Builds a SQL statement for dropping a DB column.
-	 * Because SQLite does not support dropping a DB column, calling this method will throw an exception.
-	 * @param string $table the table whose column is to be dropped. The name will be properly quoted by the method.
-	 * @param string $column the name of the column to be dropped. The name will be properly quoted by the method.
-	 * @return string the SQL statement for dropping a DB column.
-	 * @since 1.1.6
-	 */
+    /**
+     * Builds a SQL statement for dropping a DB column.
+     * Because SQLite does not support dropping a DB column, calling this method will throw an exception.
+     * @param string $table the table whose column is to be dropped. The name will be properly quoted by the method.
+     * @param string $column the name of the column to be dropped. The name will be properly quoted by the method.
+     * @throws CDbException
+     * @return string the SQL statement for dropping a DB column.
+     * @since 1.1.6
+     */
 	public function dropColumn($table, $column)
 	{
 		throw new CDbException(Yii::t('yii', 'Dropping DB column is not supported by SQLite.'));
 	}
 
-	/**
-	 * Builds a SQL statement for renaming a column.
-	 * Because SQLite does not support renaming a DB column, calling this method will throw an exception.
-	 * @param string $table the table whose column is to be renamed. The name will be properly quoted by the method.
-	 * @param string $name the old name of the column. The name will be properly quoted by the method.
-	 * @param string $newName the new name of the column. The name will be properly quoted by the method.
-	 * @return string the SQL statement for renaming a DB column.
-	 * @since 1.1.6
-	 */
+    /**
+     * Builds a SQL statement for renaming a column.
+     * Because SQLite does not support renaming a DB column, calling this method will throw an exception.
+     * @param string $table the table whose column is to be renamed. The name will be properly quoted by the method.
+     * @param string $name the old name of the column. The name will be properly quoted by the method.
+     * @param string $newName the new name of the column. The name will be properly quoted by the method.
+     * @throws CDbException
+     * @return string the SQL statement for renaming a DB column.
+     * @since 1.1.6
+     */
 	public function renameColumn($table, $name, $newName)
 	{
 		throw new CDbException(Yii::t('yii', 'Renaming a DB column is not supported by SQLite.'));
 	}
 
-	/**
-	 * Builds a SQL statement for adding a foreign key constraint to an existing table.
-	 * Because SQLite does not support adding foreign key to an existing table, calling this method will throw an exception.
-	 * @param string $name the name of the foreign key constraint.
-	 * @param string $table the table that the foreign key constraint will be added to.
-	 * @param string $columns the name of the column to that the constraint will be added on. If there are multiple columns, separate them with commas.
-	 * @param string $refTable the table that the foreign key references to.
-	 * @param string $refColumns the name of the column that the foreign key references to. If there are multiple columns, separate them with commas.
-	 * @param string $delete the ON DELETE option. Most DBMS support these options: RESTRICT, CASCADE, NO ACTION, SET DEFAULT, SET NULL
-	 * @param string $update the ON UPDATE option. Most DBMS support these options: RESTRICT, CASCADE, NO ACTION, SET DEFAULT, SET NULL
-	 * @return string the SQL statement for adding a foreign key constraint to an existing table.
-	 * @since 1.1.6
-	 */
+    /**
+     * Builds a SQL statement for adding a foreign key constraint to an existing table.
+     * Because SQLite does not support adding foreign key to an existing table, calling this method will throw an exception.
+     * @param string $name the name of the foreign key constraint.
+     * @param string $table the table that the foreign key constraint will be added to.
+     * @param string $columns the name of the column to that the constraint will be added on. If there are multiple columns, separate them with commas.
+     * @param string $refTable the table that the foreign key references to.
+     * @param string $refColumns the name of the column that the foreign key references to. If there are multiple columns, separate them with commas.
+     * @param string $delete the ON DELETE option. Most DBMS support these options: RESTRICT, CASCADE, NO ACTION, SET DEFAULT, SET NULL
+     * @param string $update the ON UPDATE option. Most DBMS support these options: RESTRICT, CASCADE, NO ACTION, SET DEFAULT, SET NULL
+     * @throws CDbException
+     * @return string the SQL statement for adding a foreign key constraint to an existing table.
+     * @since 1.1.6
+     */
 	public function addForeignKey($name, $table, $columns, $refTable, $refColumns, $delete=null, $update=null)
 	{
 		throw new CDbException(Yii::t('yii', 'Adding a foreign key constraint to an existing table is not supported by SQLite.'));
 	}
 
-	/**
-	 * Builds a SQL statement for dropping a foreign key constraint.
-	 * Because SQLite does not support dropping a foreign key constraint, calling this method will throw an exception.
-	 * @param string $name the name of the foreign key constraint to be dropped. The name will be properly quoted by the method.
-	 * @param string $table the table whose foreign is to be dropped. The name will be properly quoted by the method.
-	 * @return string the SQL statement for dropping a foreign key constraint.
-	 * @since 1.1.6
-	 */
+    /**
+     * Builds a SQL statement for dropping a foreign key constraint.
+     * Because SQLite does not support dropping a foreign key constraint, calling this method will throw an exception.
+     * @param string $name the name of the foreign key constraint to be dropped. The name will be properly quoted by the method.
+     * @param string $table the table whose foreign is to be dropped. The name will be properly quoted by the method.
+     * @throws CDbException
+     * @return string the SQL statement for dropping a foreign key constraint.
+     * @since 1.1.6
+     */
 	public function dropForeignKey($name, $table)
 	{
 		throw new CDbException(Yii::t('yii', 'Dropping a foreign key constraint is not supported by SQLite.'));
 	}
 
-	/**
-	 * Builds a SQL statement for changing the definition of a column.
-	 * Because SQLite does not support altering a DB column, calling this method will throw an exception.
-	 * @param string $table the table whose column is to be changed. The table name will be properly quoted by the method.
-	 * @param string $column the name of the column to be changed. The name will be properly quoted by the method.
-	 * @param string $type the new column type. The {@link getColumnType} method will be invoked to convert abstract column type (if any)
-	 * into the physical one. Anything that is not recognized as abstract type will be kept in the generated SQL.
-	 * For example, 'string' will be turned into 'varchar(255)', while 'string not null' will become 'varchar(255) not null'.
-	 * @return string the SQL statement for changing the definition of a column.
-	 * @since 1.1.6
-	 */
+    /**
+     * Builds a SQL statement for changing the definition of a column.
+     * Because SQLite does not support altering a DB column, calling this method will throw an exception.
+     * @param string $table the table whose column is to be changed. The table name will be properly quoted by the method.
+     * @param string $column the name of the column to be changed. The name will be properly quoted by the method.
+     * @param string $type the new column type. The {@link getColumnType} method will be invoked to convert abstract column type (if any)
+     * into the physical one. Anything that is not recognized as abstract type will be kept in the generated SQL.
+     * For example, 'string' will be turned into 'varchar(255)', while 'string not null' will become 'varchar(255) not null'.
+     * @throws CDbException
+     * @return string the SQL statement for changing the definition of a column.
+     * @since 1.1.6
+     */
 	public function alterColumn($table, $column, $type)
 	{
 		throw new CDbException(Yii::t('yii', 'Altering a DB column is not supported by SQLite.'));
@@ -298,29 +294,31 @@ class CSqliteSchema extends CDbSchema
 		return 'DROP INDEX '.$this->quoteTableName($name);
 	}
 
-	/**
-	 * Builds a SQL statement for adding a primary key constraint to an existing table.
-	 * Because SQLite does not support adding a primary key on an existing table this method will throw an exception.
-	 * @param string $name the name of the primary key constraint.
-	 * @param string $table the table that the primary key constraint will be added to.
-	 * @param string|array $columns comma separated string or array of columns that the primary key will consist of.
-	 * @return string the SQL statement for adding a primary key constraint to an existing table.
-	 * @since 1.1.13
-	 */
+    /**
+     * Builds a SQL statement for adding a primary key constraint to an existing table.
+     * Because SQLite does not support adding a primary key on an existing table this method will throw an exception.
+     * @param string $name the name of the primary key constraint.
+     * @param string $table the table that the primary key constraint will be added to.
+     * @param string|array $columns comma separated string or array of columns that the primary key will consist of.
+     * @throws CDbException
+     * @return string the SQL statement for adding a primary key constraint to an existing table.
+     * @since 1.1.13
+     */
 	public function addPrimaryKey($name,$table,$columns)
 	{
 		throw new CDbException(Yii::t('yii', 'Adding a primary key after table has been created is not supported by SQLite.'));
 	}
 
 
-	/**
-	 * Builds a SQL statement for removing a primary key constraint to an existing table.
-	 * Because SQLite does not support dropping a primary key from an existing table this method will throw an exception
-	 * @param string $name the name of the primary key constraint to be removed.
-	 * @param string $table the table that the primary key constraint will be removed from.
-	 * @return string the SQL statement for removing a primary key constraint from an existing table.
-	 * @since 1.1.13
-	 */
+    /**
+     * Builds a SQL statement for removing a primary key constraint to an existing table.
+     * Because SQLite does not support dropping a primary key from an existing table this method will throw an exception
+     * @param string $name the name of the primary key constraint to be removed.
+     * @param string $table the table that the primary key constraint will be removed from.
+     * @throws CDbException
+     * @return string the SQL statement for removing a primary key constraint from an existing table.
+     * @since 1.1.13
+     */
 	public function dropPrimaryKey($name,$table)
 	{
 		throw new CDbException(Yii::t('yii', 'Removing a primary key after table has been created is not supported by SQLite.'));

@@ -1,6 +1,6 @@
 <?php
 /**
- * CActiveRecord class file.
+ * GActiveRecord class file.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @link http://www.yiiframework.com/
@@ -9,7 +9,7 @@
  */
 
 /**
- * CActiveRecord is the base class for classes representing relational data.
+ * GActiveRecord is the base class for classes representing relational data.
  *
  * It implements the active record design pattern, a popular Object-Relational Mapping (ORM) technique.
  * Please check {@link http://www.yiiframework.com/doc/guide/database.ar the Guide} for more details
@@ -18,8 +18,7 @@
  * @property CDbCriteria $dbCriteria The query criteria that is associated with this model.
  * This criteria is mainly used by {@link scopes named scope} feature to accumulate
  * different criteria specifications.
- * @property CActiveRecordMetaData $metaData The meta for this AR class.
- * @property CDbConnection $dbConnection The database connection used by active record.
+ * @property GActiveRecordMetaData $metaData The meta for this AR class.
  * @property CDbTableSchema $tableSchema The metadata of the table that this AR belongs to.
  * @property CDbCommandBuilder $commandBuilder The command builder used by this AR.
  * @property array $attributes Attribute values indexed by attribute names.
@@ -37,7 +36,7 @@
  * @package system.db.ar
  * @since 1.0
  */
-abstract class CActiveRecord extends CModel
+abstract class GActiveRecord extends CModel implements IActiveRecord
 {
 	const BELONGS_TO='CBelongsToRelation';
 	const HAS_ONE='CHasOneRelation';
@@ -45,13 +44,8 @@ abstract class CActiveRecord extends CModel
 	const MANY_MANY='CManyManyRelation';
 	const STAT='CStatRelation';
 
-	/**
-	 * @var CDbConnection the default database connection for all active record classes.
-	 * By default, this is the 'db' application component.
-	 * @see getDbConnection
-	 */
-	public static $db;
 
+    private $_forceMaster = false;
 	private static $_models=array();			// class name => model
 
 	private $_md;								// meta data
@@ -62,6 +56,7 @@ abstract class CActiveRecord extends CModel
 	private $_pk;								// old primary key value
 	private $_alias='t';						// the table alias being used for query
 
+	private static $_mdCache = array();			// meta data cache
 
 	/**
 	 * Constructor.
@@ -93,6 +88,23 @@ abstract class CActiveRecord extends CModel
 	{
 	}
 
+    /**
+     * @return GConnectionManager
+     */
+    public function getPool()
+    {
+        return Yii::app()->getDb();
+    }
+
+	/**
+	 * @return IDbSchema
+	 */
+	public function getSchema()
+    {
+        /** @var $pool GConnectionManager */
+        return $this->getPool()->getSchema();
+    }
+
 	/**
 	 * Sets the parameters about query caching.
 	 * This is a shortcut method to {@link CDbConnection::cache()}.
@@ -103,7 +115,7 @@ abstract class CActiveRecord extends CModel
 	 * the query results into cache.
 	 * @param integer $queryCount number of SQL queries that need to be cached after calling this method. Defaults to 1,
 	 * meaning that the next SQL query will be cached.
-	 * @return CActiveRecord the active record instance itself.
+	 * @return GActiveRecord the active record instance itself.
 	 * @since 1.1.7
 	 */
 	public function cache($duration, $dependency=null, $queryCount=1)
@@ -149,7 +161,8 @@ abstract class CActiveRecord extends CModel
 	 * This method is overridden so that AR attributes can be accessed like properties.
 	 * @param string $name property name
 	 * @param mixed $value property value
-	 */
+     * @return mixed|void
+     */
 	public function __set($name,$value)
 	{
 		if($this->setAttribute($name,$value)===false)
@@ -187,7 +200,8 @@ abstract class CActiveRecord extends CModel
 	 * This method overrides the parent implementation by clearing
 	 * the specified attribute value.
 	 * @param string $name the property name or the event name
-	 */
+     * @return mixed|void
+     */
 	public function __unset($name)
 	{
 		if(isset($this->getMetaData()->columns[$name]))
@@ -249,12 +263,13 @@ abstract class CActiveRecord extends CModel
 			throw new CDbException(Yii::t('yii','{class} does not have relation "{name}".',
 				array('{class}'=>get_class($this), '{name}'=>$name)));
 
-		Yii::trace('lazy loading '.get_class($this).'.'.$name,'system.db.ar.CActiveRecord');
+		Yii::trace('lazy loading '.get_class($this).'.'.$name,'system.db.ar.GActiveRecord');
 		$relation=$md->relations[$name];
 		if($this->getIsNewRecord() && !$refresh && ($relation instanceof CHasOneRelation || $relation instanceof CHasManyRelation))
 			return $relation instanceof CHasOneRelation ? null : array();
 
-		if($params!==array()) // dynamic query
+		$exists = $save = false;
+        if($params!==array()) // dynamic query
 		{
 			$exists=isset($this->_related[$name]) || array_key_exists($name,$this->_related);
 			if($exists)
@@ -349,7 +364,7 @@ abstract class CActiveRecord extends CModel
 	 * Resets all scopes and criterias applied.
 	 *
 	 * @param boolean $resetDefault including default scope. This parameter available since 1.1.12
-	 * @return CActiveRecord
+	 * @return GActiveRecord
 	 * @since 1.1.2
 	 */
 	public function resetScope($resetDefault=true)
@@ -362,58 +377,79 @@ abstract class CActiveRecord extends CModel
 		return $this;
 	}
 
-	/**
-	 * Returns the static model of the specified AR class.
-	 * The model returned is a static instance of the AR class.
-	 * It is provided for invoking class-level methods (something similar to static class methods.)
-	 *
-	 * EVERY derived AR class must override this method as follows,
-	 * <pre>
-	 * public static function model($className=__CLASS__)
-	 * {
-	 *     return parent::model($className);
-	 * }
-	 * </pre>
-	 *
-	 * @param string $className active record class name.
-	 * @return CActiveRecord active record model instance.
-	 */
+    /**
+     * Returns the static model of the specified AR class.
+     * The model returned is a static instance of the AR class.
+     * It is provided for invoking class-level methods (something similar to static class methods.)
+     *
+     * EVERY derived AR class must override this method as follows,
+     * <pre>
+     * public static function model($className=__CLASS__)
+     * {
+     *     return parent::model($className);
+     * }
+     * </pre>
+     *
+     * @param string $className active record class name.
+     * @throws CDbException
+     * @return GActiveRecord active record model instance.
+     */
 	public static function model($className=__CLASS__)
 	{
 		if(isset(self::$_models[$className]))
 			return self::$_models[$className];
 		else
 		{
+			if (YII_DEBUG && $className != __CLASS__ && !is_subclass_of($className, __CLASS__))
+			{
+                throw new CDbException(Yii::t('yii','A model class should extend GActiveRecord'));
+			}
 			$model=self::$_models[$className]=new $className(null);
-			$model->_md=new CActiveRecordMetaData($model);
-			$model->attachBehaviors($model->behaviors());
+            /** @var $className GActiveRecord */
+            $model->_md=$className::generateMetaData($model);
+            /** @var $model GActiveRecord */
+            $model->attachBehaviors($model->behaviors());
 			return $model;
 		}
 	}
 
 	/**
 	 * Returns the meta-data for this AR
-	 * @return CActiveRecordMetaData the meta for this AR class.
+	 * @return GActiveRecordMetaData the meta for this AR class.
 	 */
 	public function getMetaData()
 	{
 		if($this->_md!==null)
 			return $this->_md;
-		else
-			return $this->_md=self::model(get_class($this))->_md;
+        return $this->_md=static::generateMetaData($this);
 	}
 
 	/**
+	 * Generates the meta-data object for the AR model
+     *
+     * @param GActiveRecord $model
+	 * @return GActiveRecordMetaData
+	 */
+	protected static function generateMetaData(GActiveRecord $model)
+	{
+		$model_class = get_class($model);
+		if (isset (self::$_mdCache[$model_class])){
+			return self::$_mdCache[$model_class];
+		}
+		return self::$_mdCache[$model_class] = new GActiveRecordMetaData($model);
+	}
+
+    /**
 	 * Refreshes the meta data for this AR class.
 	 * By calling this method, this AR class will regenerate the meta data needed.
 	 * This is useful if the table schema has been changed and you want to use the latest
-	 * available table schema. Make sure you have called {@link CDbSchema::refresh}
+	 * available table schema. Make sure you have called {@link IDbSchema::refresh}
 	 * before you call this method. Otherwise, old table schema data will still be used.
 	 */
 	public function refreshMetaData()
 	{
 		$finder=self::model(get_class($this));
-		$finder->_md=new CActiveRecordMetaData($finder);
+		$finder->_md=new GActiveRecordMetaData($finder);
 		if($this!==$finder)
 			$this->_md=$finder->_md;
 	}
@@ -599,7 +635,7 @@ abstract class CActiveRecord extends CModel
 			{
 				$relations=$model->getMetaData()->relations;
 				if(isset($relations[$seg]))
-					$model=CActiveRecord::model($relations[$seg]->className);
+					$model=GActiveRecord::model($relations[$seg]->className);
 				else
 					break;
 			}
@@ -610,30 +646,9 @@ abstract class CActiveRecord extends CModel
 	}
 
 	/**
-	 * Returns the database connection used by active record.
-	 * By default, the "db" application component is used as the database connection.
-	 * You may override this method if you want to use a different database connection.
-	 * @throws CDbException if "db" application component is not defined
-	 * @return CDbConnection the database connection used by active record.
-	 */
-	public function getDbConnection()
-	{
-		if(self::$db!==null)
-			return self::$db;
-		else
-		{
-			self::$db=Yii::app()->getDb();
-			if(self::$db instanceof CDbConnection)
-				return self::$db;
-			else
-				throw new CDbException(Yii::t('yii','Active Record requires a "db" CDbConnection application component.'));
-		}
-	}
-
-	/**
 	 * Returns the named relation declared for this AR class.
 	 * @param string $name the relation name
-	 * @return CActiveRelation the named relation declared for this AR class. Null if the relation does not exist.
+	 * @return GActiveRelation the named relation declared for this AR class. Null if the relation does not exist.
 	 */
 	public function getActiveRelation($name)
 	{
@@ -655,7 +670,7 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function getCommandBuilder()
 	{
-		return $this->getDbConnection()->getSchema()->getCommandBuilder();
+		return GDbCommandBuilder::factory($this->getPool());
 	}
 
 	/**
@@ -685,6 +700,8 @@ abstract class CActiveRecord extends CModel
 			return $this->$name;
 		elseif(isset($this->_attributes[$name]))
 			return $this->_attributes[$name];
+
+        return null;
 	}
 
 	/**
@@ -721,7 +738,7 @@ abstract class CActiveRecord extends CModel
 		{
 			if(!isset($this->_related[$name]))
 				$this->_related[$name]=array();
-			if($record instanceof CActiveRecord)
+			if($record instanceof GActiveRecord)
 			{
 				if($index===true)
 					$this->_related[$name][]=$record;
@@ -861,7 +878,7 @@ abstract class CActiveRecord extends CModel
 
 	/**
 	 * This event is raised before an AR finder performs a find call.
-	 * This can be either a call to CActiveRecords find methods or a find call
+	 * This can be either a call to GActiveRecords find methods or a find call
 	 * when model is loaded in relational context via lazy or eager loading.
 	 * If you want to access or modify the query criteria used for the
 	 * find call, you can use {@link getDbCriteria()} to customize it based on your needs.
@@ -1018,7 +1035,7 @@ abstract class CActiveRecord extends CModel
 			throw new CDbException(Yii::t('yii','The active record cannot be inserted to database because it is not new.'));
 		if($this->beforeSave())
 		{
-			Yii::trace(get_class($this).'.insert()','system.db.ar.CActiveRecord');
+			Yii::trace(get_class($this).'.insert()','system.db.ar.GActiveRecord');
 			$builder=$this->getCommandBuilder();
 			$table=$this->getMetaData()->tableSchema;
 			$command=$builder->createInsertCommand($table,$this->getAttributes($attributes));
@@ -1066,7 +1083,7 @@ abstract class CActiveRecord extends CModel
 			throw new CDbException(Yii::t('yii','The active record cannot be updated because it is new.'));
 		if($this->beforeSave())
 		{
-			Yii::trace(get_class($this).'.update()','system.db.ar.CActiveRecord');
+			Yii::trace(get_class($this).'.update()','system.db.ar.GActiveRecord');
 			if($this->_pk===null)
 				$this->_pk=$this->getPrimaryKey();
 			$this->updateByPk($this->getOldPrimaryKey(),$this->getAttributes($attributes));
@@ -1100,7 +1117,7 @@ abstract class CActiveRecord extends CModel
 	{
 		if(!$this->getIsNewRecord())
 		{
-			Yii::trace(get_class($this).'.saveAttributes()','system.db.ar.CActiveRecord');
+			Yii::trace(get_class($this).'.saveAttributes()','system.db.ar.GActiveRecord');
 			$values=array();
 			foreach($attributes as $name=>$value)
 			{
@@ -1140,7 +1157,7 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function saveCounters($counters)
 	{
-		Yii::trace(get_class($this).'.saveCounters()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.saveCounters()','system.db.ar.GActiveRecord');
 		$builder=$this->getCommandBuilder();
 		$table=$this->getTableSchema();
 		$criteria=$builder->createPkCriteria($table,$this->getOldPrimaryKey());
@@ -1164,7 +1181,7 @@ abstract class CActiveRecord extends CModel
 	{
 		if(!$this->getIsNewRecord())
 		{
-			Yii::trace(get_class($this).'.delete()','system.db.ar.CActiveRecord');
+			Yii::trace(get_class($this).'.delete()','system.db.ar.GActiveRecord');
 			if($this->beforeDelete())
 			{
 				$result=$this->deleteByPk($this->getPrimaryKey())>0;
@@ -1184,7 +1201,7 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function refresh()
 	{
-		Yii::trace(get_class($this).'.refresh()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.refresh()','system.db.ar.GActiveRecord');
 		if(($record=$this->findByPk($this->getPrimaryKey()))!==null)
 		{
 			$this->_attributes=array();
@@ -1205,7 +1222,7 @@ abstract class CActiveRecord extends CModel
 	/**
 	 * Compares current active record with another one.
 	 * The comparison is made by comparing table name and the primary key values of the two active records.
-	 * @param CActiveRecord $record record to compare to
+	 * @param GActiveRecord $record record to compare to
 	 * @return boolean whether the two active records refer to the same row in the database table.
 	 */
 	public function equals($record)
@@ -1295,7 +1312,7 @@ abstract class CActiveRecord extends CModel
 		{
 			if(!$all)
 				$criteria->limit=1;
-			$command=$this->getCommandBuilder()->createFindCommand($this->getTableSchema(),$criteria,$this->getTableAlias());
+			$command=$this->getCommandBuilder()->createFindCommand($this->getTableSchema(),$criteria,$this->_forceMaster,$this->getTableAlias());
 			return $all ? $this->populateRecords($command->queryAll(), true, $criteria->index) : $this->populateRecord($command->queryRow());
 		}
 		else
@@ -1319,7 +1336,8 @@ abstract class CActiveRecord extends CModel
 			$c=$this->getDbCriteria();
 			foreach((array)$criteria->scopes as $k=>$v)
 			{
-				if(is_integer($k))
+                $params=array();
+                if(is_integer($k))
 				{
 					if(is_string($v))
 					{
@@ -1329,7 +1347,6 @@ abstract class CActiveRecord extends CModel
 							continue;
 						}
 						$scope=$v;
-						$params=array();
 					}
 					elseif(is_array($v))
 					{
@@ -1343,7 +1360,8 @@ abstract class CActiveRecord extends CModel
 					$params=$v;
 				}
 
-				call_user_func_array(array($this,$scope),(array)$params);
+				if (!empty($scope))
+                    call_user_func_array(array($this,$scope),(array)$params);
 			}
 		}
 
@@ -1373,7 +1391,7 @@ abstract class CActiveRecord extends CModel
 			$alias=$criteria->alias;
 		else
 			$alias=$this->_alias;
-		return $quote ? $this->getDbConnection()->getSchema()->quoteTableName($alias) : $alias;
+		return $quote ? $this->getSchema()->quoteTableName($alias) : $alias;
 	}
 
 	/**
@@ -1395,11 +1413,11 @@ abstract class CActiveRecord extends CModel
 	 * @param array $params parameters to be bound to an SQL statement.
 	 * This is only used when the first parameter is a string (query condition).
 	 * In other cases, please use {@link CDbCriteria::params} to set parameters.
-	 * @return CActiveRecord the record found. Null if no record is found.
+	 * @return GActiveRecord the record found. Null if no record is found.
 	 */
 	public function find($condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.find()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.find()','system.db.ar.GActiveRecord');
 		$criteria=$this->getCommandBuilder()->createCriteria($condition,$params);
 		return $this->query($criteria);
 	}
@@ -1409,11 +1427,11 @@ abstract class CActiveRecord extends CModel
 	 * See {@link find()} for detailed explanation about $condition and $params.
 	 * @param mixed $condition query condition or criteria.
 	 * @param array $params parameters to be bound to an SQL statement.
-	 * @return CActiveRecord[] list of active records satisfying the specified condition. An empty array is returned if none is found.
+	 * @return GActiveRecord[] list of active records satisfying the specified condition. An empty array is returned if none is found.
 	 */
 	public function findAll($condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.findAll()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.findAll()','system.db.ar.GActiveRecord');
 		$criteria=$this->getCommandBuilder()->createCriteria($condition,$params);
 		return $this->query($criteria,true);
 	}
@@ -1424,11 +1442,11 @@ abstract class CActiveRecord extends CModel
 	 * @param mixed $pk primary key value(s). Use array for multiple primary keys. For composite key, each key value must be an array (column name=>column value).
 	 * @param mixed $condition query condition or criteria.
 	 * @param array $params parameters to be bound to an SQL statement.
-	 * @return CActiveRecord the record found. Null if none is found.
+	 * @return GActiveRecord the record found. Null if none is found.
 	 */
 	public function findByPk($pk,$condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.findByPk()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.findByPk()','system.db.ar.GActiveRecord');
 		$prefix=$this->getTableAlias(true).'.';
 		$criteria=$this->getCommandBuilder()->createPkCriteria($this->getTableSchema(),$pk,$condition,$params,$prefix);
 		return $this->query($criteria);
@@ -1440,11 +1458,11 @@ abstract class CActiveRecord extends CModel
 	 * @param mixed $pk primary key value(s). Use array for multiple primary keys. For composite key, each key value must be an array (column name=>column value).
 	 * @param mixed $condition query condition or criteria.
 	 * @param array $params parameters to be bound to an SQL statement.
-	 * @return CActiveRecord[] the records found. An empty array is returned if none is found.
+	 * @return GActiveRecord[] the records found. An empty array is returned if none is found.
 	 */
 	public function findAllByPk($pk,$condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.findAllByPk()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.findAllByPk()','system.db.ar.GActiveRecord');
 		$prefix=$this->getTableAlias(true).'.';
 		$criteria=$this->getCommandBuilder()->createPkCriteria($this->getTableSchema(),$pk,$condition,$params,$prefix);
 		return $this->query($criteria,true);
@@ -1457,11 +1475,11 @@ abstract class CActiveRecord extends CModel
 	 * An attribute value can be an array which will be used to generate an IN condition.
 	 * @param mixed $condition query condition or criteria.
 	 * @param array $params parameters to be bound to an SQL statement.
-	 * @return CActiveRecord the record found. Null if none is found.
+	 * @return GActiveRecord the record found. Null if none is found.
 	 */
 	public function findByAttributes($attributes,$condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.findByAttributes()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.findByAttributes()','system.db.ar.GActiveRecord');
 		$prefix=$this->getTableAlias(true).'.';
 		$criteria=$this->getCommandBuilder()->createColumnCriteria($this->getTableSchema(),$attributes,$condition,$params,$prefix);
 		return $this->query($criteria);
@@ -1474,11 +1492,11 @@ abstract class CActiveRecord extends CModel
 	 * An attribute value can be an array which will be used to generate an IN condition.
 	 * @param mixed $condition query condition or criteria.
 	 * @param array $params parameters to be bound to an SQL statement.
-	 * @return CActiveRecord[] the records found. An empty array is returned if none is found.
+	 * @return GActiveRecord[] the records found. An empty array is returned if none is found.
 	 */
 	public function findAllByAttributes($attributes,$condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.findAllByAttributes()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.findAllByAttributes()','system.db.ar.GActiveRecord');
 		$prefix=$this->getTableAlias(true).'.';
 		$criteria=$this->getCommandBuilder()->createColumnCriteria($this->getTableSchema(),$attributes,$condition,$params,$prefix);
 		return $this->query($criteria,true);
@@ -1488,11 +1506,11 @@ abstract class CActiveRecord extends CModel
 	 * Finds a single active record with the specified SQL statement.
 	 * @param string $sql the SQL statement
 	 * @param array $params parameters to be bound to the SQL statement
-	 * @return CActiveRecord the record found. Null if none is found.
+	 * @return GActiveRecord the record found. Null if none is found.
 	 */
 	public function findBySql($sql,$params=array())
 	{
-		Yii::trace(get_class($this).'.findBySql()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.findBySql()','system.db.ar.GActiveRecord');
 		$this->beforeFind();
 		if(($criteria=$this->getDbCriteria(false))!==null && !empty($criteria->with))
 		{
@@ -1511,11 +1529,11 @@ abstract class CActiveRecord extends CModel
 	 * Finds all active records using the specified SQL statement.
 	 * @param string $sql the SQL statement
 	 * @param array $params parameters to be bound to the SQL statement
-	 * @return CActiveRecord[] the records found. An empty array is returned if none is found.
+	 * @return GActiveRecord[] the records found. An empty array is returned if none is found.
 	 */
 	public function findAllBySql($sql,$params=array())
 	{
-		Yii::trace(get_class($this).'.findAllBySql()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.findAllBySql()','system.db.ar.GActiveRecord');
 		$this->beforeFind();
 		if(($criteria=$this->getDbCriteria(false))!==null && !empty($criteria->with))
 		{
@@ -1539,13 +1557,13 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function count($condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.count()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.count()','system.db.ar.GActiveRecord');
 		$builder=$this->getCommandBuilder();
 		$criteria=$builder->createCriteria($condition,$params);
 		$this->applyScopes($criteria);
 
 		if(empty($criteria->with))
-			return $builder->createCountCommand($this->getTableSchema(),$criteria)->queryScalar();
+			return $builder->createCountCommand($this->getTableSchema(),$criteria,$this->_forceMaster)->queryScalar();
 		else
 		{
 			$finder=new CActiveFinder($this,$criteria->with);
@@ -1565,14 +1583,14 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function countByAttributes($attributes,$condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.countByAttributes()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.countByAttributes()','system.db.ar.GActiveRecord');
 		$prefix=$this->getTableAlias(true).'.';
 		$builder=$this->getCommandBuilder();
 		$criteria=$builder->createColumnCriteria($this->getTableSchema(),$attributes,$condition,$params,$prefix);
 		$this->applyScopes($criteria);
 
 		if(empty($criteria->with))
-			return $builder->createCountCommand($this->getTableSchema(),$criteria)->queryScalar();
+			return $builder->createCountCommand($this->getTableSchema(),$criteria,$this->_forceMaster)->queryScalar();
 		else
 		{
 			$finder=new CActiveFinder($this,$criteria->with);
@@ -1590,7 +1608,7 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function countBySql($sql,$params=array())
 	{
-		Yii::trace(get_class($this).'.countBySql()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.countBySql()','system.db.ar.GActiveRecord');
 		return $this->getCommandBuilder()->createSqlCommand($sql,$params)->queryScalar();
 	}
 
@@ -1603,7 +1621,7 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function exists($condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.exists()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.exists()','system.db.ar.GActiveRecord');
 		$builder=$this->getCommandBuilder();
 		$criteria=$builder->createCriteria($condition,$params);
 		$table=$this->getTableSchema();
@@ -1612,7 +1630,7 @@ abstract class CActiveRecord extends CModel
 		$this->applyScopes($criteria);
 
 		if(empty($criteria->with))
-			return $builder->createFindCommand($table,$criteria,$this->getTableAlias(false, false))->queryRow()!==false;
+			return $builder->createFindCommand($table,$criteria,$this->_forceMaster,$this->getTableAlias(false, false))->queryRow()!==false;
 		else
 		{
 			$criteria->select='*';
@@ -1645,7 +1663,7 @@ abstract class CActiveRecord extends CModel
 	 * ))->findAll();
 	 * </pre>
 	 *
-	 * @return CActiveRecord the AR object itself.
+	 * @return GActiveRecord the AR object itself.
 	 */
 	public function with()
 	{
@@ -1664,7 +1682,7 @@ abstract class CActiveRecord extends CModel
 	 * Sets {@link CDbCriteria::together} property to be true.
 	 * This is only used in relational AR query. Please refer to {@link CDbCriteria::together}
 	 * for more details.
-	 * @return CActiveRecord the AR object itself
+	 * @return GActiveRecord the AR object itself
 	 * @since 1.1.4
 	 */
 	public function together()
@@ -1685,7 +1703,7 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function updateByPk($pk,$attributes,$condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.updateByPk()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.updateByPk()','system.db.ar.GActiveRecord');
 		$builder=$this->getCommandBuilder();
 		$table=$this->getTableSchema();
 		$criteria=$builder->createPkCriteria($table,$pk,$condition,$params);
@@ -1704,7 +1722,7 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function updateAll($attributes,$condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.updateAll()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.updateAll()','system.db.ar.GActiveRecord');
 		$builder=$this->getCommandBuilder();
 		$criteria=$builder->createCriteria($condition,$params);
 		$command=$builder->createUpdateCommand($this->getTableSchema(),$attributes,$criteria);
@@ -1723,7 +1741,7 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function updateCounters($counters,$condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.updateCounters()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.updateCounters()','system.db.ar.GActiveRecord');
 		$builder=$this->getCommandBuilder();
 		$criteria=$builder->createCriteria($condition,$params);
 		$command=$builder->createUpdateCounterCommand($this->getTableSchema(),$counters,$criteria);
@@ -1740,7 +1758,7 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function deleteByPk($pk,$condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.deleteByPk()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.deleteByPk()','system.db.ar.GActiveRecord');
 		$builder=$this->getCommandBuilder();
 		$criteria=$builder->createPkCriteria($this->getTableSchema(),$pk,$condition,$params);
 		$command=$builder->createDeleteCommand($this->getTableSchema(),$criteria);
@@ -1756,7 +1774,7 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function deleteAll($condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.deleteAll()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.deleteAll()','system.db.ar.GActiveRecord');
 		$builder=$this->getCommandBuilder();
 		$criteria=$builder->createCriteria($condition,$params);
 		$command=$builder->createDeleteCommand($this->getTableSchema(),$criteria);
@@ -1774,7 +1792,7 @@ abstract class CActiveRecord extends CModel
 	 */
 	public function deleteAllByAttributes($attributes,$condition='',$params=array())
 	{
-		Yii::trace(get_class($this).'.deleteAllByAttributes()','system.db.ar.CActiveRecord');
+		Yii::trace(get_class($this).'.deleteAllByAttributes()','system.db.ar.GActiveRecord');
 		$builder=$this->getCommandBuilder();
 		$table=$this->getTableSchema();
 		$criteria=$builder->createColumnCriteria($table,$attributes,$condition,$params);
@@ -1787,7 +1805,7 @@ abstract class CActiveRecord extends CModel
 	 * This method is internally used by the find methods.
 	 * @param array $attributes attribute values (column name=>column value)
 	 * @param boolean $callAfterFind whether to call {@link afterFind} after the record is populated.
-	 * @return CActiveRecord the newly created active record. The class of the object is the same as the model class.
+	 * @return GActiveRecord the newly created active record. The class of the object is the same as the model class.
 	 * Null is returned if the input data is false.
 	 */
 	public function populateRecord($attributes,$callAfterFind=true)
@@ -1822,7 +1840,7 @@ abstract class CActiveRecord extends CModel
 	 * @param boolean $callAfterFind whether to call {@link afterFind} after each record is populated.
 	 * @param string $index the name of the attribute whose value will be used as indexes of the query result array.
 	 * If null, it means the array will be indexed by zero-based integers.
-	 * @return CActiveRecord[] list of active records.
+	 * @return GActiveRecord[] list of active records.
 	 */
 	public function populateRecords($data,$callAfterFind=true,$index=null)
 	{
@@ -1847,10 +1865,9 @@ abstract class CActiveRecord extends CModel
 	 * depends the attributes that are to be populated to the record.
 	 * For example, by creating a record based on the value of a column,
 	 * you may implement the so-called single-table inheritance mapping.
-	 * @param array $attributes list of attribute values for the active records.
-	 * @return CActiveRecord the active record
+	 * @return GActiveRecord the active record
 	 */
-	protected function instantiate($attributes)
+	protected function instantiate()
 	{
 		$class=get_class($this);
 		$model=new $class(null);
@@ -1867,6 +1884,26 @@ abstract class CActiveRecord extends CModel
 	{
 		return $this->__isset($offset);
 	}
+
+
+
+    /**
+     * @return GActiveRecord
+     */
+    public function forceMaster()
+    {
+        $this->_forceMaster = true;
+        return $this;
+    }
+
+    /**
+     * @return GActiveRecord
+     */
+    public function unsetForceMaster()
+    {
+        $this->_forceMaster = false;
+        return $this;
+    }
 }
 
 
@@ -1896,7 +1933,7 @@ class CBaseActiveRelation extends CComponent
 	 */
 	public $select='*';
 	/**
-	 * @var string WHERE clause. For {@link CActiveRelation} descendant classes, column names
+	 * @var string WHERE clause. For {@link GActiveRelation} descendant classes, column names
 	 * referenced in the condition should be disambiguated with prefix 'relationName.'.
 	 */
 	public $condition='';
@@ -1906,7 +1943,7 @@ class CBaseActiveRelation extends CComponent
 	 */
 	public $params=array();
 	/**
-	 * @var string GROUP BY clause. For {@link CActiveRelation} descendant classes, column names
+	 * @var string GROUP BY clause. For {@link GActiveRelation} descendant classes, column names
 	 * referenced in this property should be disambiguated with prefix 'relationName.'.
 	 */
 	public $group='';
@@ -1917,12 +1954,12 @@ class CBaseActiveRelation extends CComponent
 	 */
 	public $join='';
 	/**
-	 * @var string HAVING clause. For {@link CActiveRelation} descendant classes, column names
+	 * @var string HAVING clause. For {@link GActiveRelation} descendant classes, column names
 	 * referenced in this property should be disambiguated with prefix 'relationName.'.
 	 */
 	public $having='';
 	/**
-	 * @var string ORDER BY clause. For {@link CActiveRelation} descendant classes, column names
+	 * @var string ORDER BY clause. For {@link GActiveRelation} descendant classes, column names
 	 * referenced in this property should be disambiguated with prefix 'relationName.'.
 	 */
 	public $order='';
@@ -2046,12 +2083,12 @@ class CStatRelation extends CBaseActiveRelation
 
 
 /**
- * CActiveRelation is the base class for representing active relations that bring back related objects.
+ * GActiveRelation is the base class for representing active relations that bring back related objects.
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @package system.db.ar
  * @since 1.0
  */
-class CActiveRelation extends CBaseActiveRelation
+class GActiveRelation extends CBaseActiveRelation
 {
 	/**
 	 * @var string join type. Defaults to 'LEFT OUTER JOIN'.
@@ -2068,7 +2105,7 @@ class CActiveRelation extends CBaseActiveRelation
 	public $alias;
 	/**
 	 * @var string|array specifies which related objects should be eagerly loaded when this related object is lazily loaded.
-	 * For more details about this property, see {@link CActiveRecord::with()}.
+	 * For more details about this property, see {@link GActiveRecord::with()}.
 	 */
 	public $with=array();
 	/**
@@ -2144,7 +2181,7 @@ class CActiveRelation extends CBaseActiveRelation
  * @package system.db.ar
  * @since 1.0
  */
-class CBelongsToRelation extends CActiveRelation
+class CBelongsToRelation extends GActiveRelation
 {
 }
 
@@ -2155,7 +2192,7 @@ class CBelongsToRelation extends CActiveRelation
  * @package system.db.ar
  * @since 1.0
  */
-class CHasOneRelation extends CActiveRelation
+class CHasOneRelation extends GActiveRelation
 {
 	/**
 	 * @var string the name of the relation that should be used as the bridge to this relation.
@@ -2172,7 +2209,7 @@ class CHasOneRelation extends CActiveRelation
  * @package system.db.ar
  * @since 1.0
  */
-class CHasManyRelation extends CActiveRelation
+class CHasManyRelation extends GActiveRelation
 {
 	/**
 	 * @var integer limit of the rows to be selected. It is effective only for lazy loading this related object. Defaults to -1, meaning no limit.
@@ -2272,13 +2309,13 @@ class CManyManyRelation extends CHasManyRelation
 
 
 /**
- * CActiveRecordMetaData represents the meta-data for an Active Record class.
+ * GActiveRecordMetaData represents the meta-data for an Active Record class.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @package system.db.ar
  * @since 1.0
  */
-class CActiveRecordMetaData
+class GActiveRecordMetaData
 {
 	/**
 	 * @var CDbTableSchema the table schema information
@@ -2301,7 +2338,7 @@ class CActiveRecordMetaData
 
 	/**
 	 * Constructor.
-	 * @param CActiveRecord $model the model instance
+	 * @param GActiveRecord $model the model instance
 	 * @throws CDbException if specified table for active record class cannot be found in the database
 	 */
 	public function __construct($model)
@@ -2309,7 +2346,7 @@ class CActiveRecordMetaData
 		$this->_model=$model;
 
 		$tableName=$model->tableName();
-		if(($table=$model->getDbConnection()->getSchema()->getTable($tableName))===null)
+		if(($table=$model->getSchema()->getTable($tableName))===null)
 			throw new CDbException(Yii::t('yii','The table "{table}" for active record class "{class}" cannot be found in the database.',
 				array('{class}'=>get_class($model),'{table}'=>$tableName)));
 		if($table->primaryKey===null)

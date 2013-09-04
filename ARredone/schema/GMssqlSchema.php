@@ -1,6 +1,6 @@
 <?php
 /**
- * CMssqlSchema class file.
+ * GMssqlSchema class file.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @author Christophe Boulain <Christophe.Boulain@gmail.com>
@@ -10,13 +10,13 @@
  */
 
 /**
- * CMssqlSchema is the class for retrieving metadata information from a MS SQL Server database.
+ * GMssqlSchema is the class for retrieving metadata information from a MS SQL Server database.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @author Christophe Boulain <Christophe.Boulain@gmail.com>
  * @package system.db.schema.mssql
  */
-class CMssqlSchema extends CDbSchema
+class GMssqlSchema extends GDbSchema
 {
 	const DEFAULT_SCHEMA='dbo';
 
@@ -91,7 +91,7 @@ class CMssqlSchema extends CDbSchema
 	{
 		if($table->sequenceName!==null)
 		{
-			$db=$this->getDbConnection();
+			$db=$this->getPool();
 			if($value===null)
 				$value=(int)$db->createCommand("SELECT MAX([{$table->primaryKey}]) FROM {$table->rawName}")->queryScalar();
 			else
@@ -113,7 +113,7 @@ class CMssqlSchema extends CDbSchema
 		$enable=$check ? 'CHECK' : 'NOCHECK';
 		if(!isset($this->_normalTables[$schema]))
 			$this->_normalTables[$schema]=$this->findTableNames($schema,false);
-		$db=$this->getDbConnection();
+		$db=$this->getPool();
 		foreach($this->_normalTables[$schema] as $tableName)
 		{
 			$tableName=$this->quoteTableName($tableName);
@@ -199,7 +199,7 @@ class CMssqlSchema extends CDbSchema
 		   	    AND k.table_name = :table
 				AND k.table_schema = :schema
 EOD;
-		$command = $this->getDbConnection()->createCommand($sql);
+		$command = $this->getPool()->createCommand($sql);
 		$command->bindValue(':table', $table->name);
 		$command->bindValue(':schema', $table->schemaName);
 		$primary=$command->queryColumn();
@@ -256,7 +256,7 @@ EOD;
 		   AND KCU2.ORDINAL_POSITION = KCU1.ORDINAL_POSITION
 		WHERE KCU1.TABLE_NAME = :table
 EOD;
-		$command = $this->getDbConnection()->createCommand($sql);
+		$command = $this->getPool()->createCommand($sql);
 		$command->bindValue(':table', $table->name);
 		$fkeys=array();
 		foreach($command->queryAll() as $info)
@@ -291,7 +291,7 @@ EOD;
 			 "LEFT OUTER JOIN sys.extended_properties AS t2 ON t1.ORDINAL_POSITION = t2.minor_id AND ".
 			 "object_name(t2.major_id) = t1.TABLE_NAME AND t2.class=1 AND t2.class_desc='OBJECT_OR_COLUMN' AND t2.name='MS_Description' ".
 			 "WHERE ".join(' AND ',$where);
-		if (($columns=$this->getDbConnection()->createCommand($sql)->queryAll())===array())
+		if (($columns=$this->getPool()->createCommand($sql)->queryAll())===array())
 			return false;
 
 		foreach($columns as $column)
@@ -357,7 +357,7 @@ EOD;
 SELECT TABLE_NAME, TABLE_SCHEMA FROM [INFORMATION_SCHEMA].[TABLES]
 WHERE TABLE_SCHEMA=:schema AND $condition
 EOD;
-		$command=$this->getDbConnection()->createCommand($sql);
+		$command=$this->getPool()->createCommand($sql);
 		$command->bindParam(":schema", $schema);
 		$rows=$command->queryAll();
 		$names=array();
@@ -370,16 +370,6 @@ EOD;
 		}
 
 		return $names;
-	}
-
-	/**
-	 * Creates a command builder for the database.
-	 * This method overrides parent implementation in order to create a MSSQL specific command builder
-	 * @return CDbCommandBuilder command builder instance
-	 */
-	protected function createCommandBuilder()
-	{
-		return new CMssqlCommandBuilder($this);
 	}
 
 	/**
