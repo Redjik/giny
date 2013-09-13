@@ -396,21 +396,24 @@ abstract class GActiveRecord extends CModel implements IActiveRecord
      */
 	public static function model($className=__CLASS__)
 	{
-		if(isset(self::$_models[$className]))
-			return self::$_models[$className];
-		else
-		{
-			if (YII_DEBUG && $className != __CLASS__ && !is_subclass_of($className, __CLASS__))
-			{
-                throw new CDbException(Yii::t('yii','A model class should extend GActiveRecord'));
-			}
-			$model=self::$_models[$className]=new $className(null);
-            /** @var $className GActiveRecord */
-            $model->_md=$className::generateMetaData($model);
-            /** @var $model GActiveRecord */
-            $model->attachBehaviors($model->behaviors());
-			return $model;
-		}
+
+		Yii::app()->getConnectionManager()->createConnection->createSchema->createActiveRecord(CommandBuilder)
+
+//		if(isset(self::$_models[$className]))
+//			return self::$_models[$className];
+//		else
+//		{
+//			if (YII_DEBUG && $className != __CLASS__ && !is_subclass_of($className, __CLASS__))
+//			{
+//                throw new CDbException(Yii::t('yii','A model class should extend GActiveRecord'));
+//			}
+//			$model=self::$_models[$className]=new $className(null);
+//            /** @var $className GActiveRecord */
+//            $model->_md=$className::generateMetaData($model);
+//            /** @var $model GActiveRecord */
+//            $model->attachBehaviors($model->behaviors());
+//			return $model;
+//		}
 	}
 
 	/**

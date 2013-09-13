@@ -35,6 +35,11 @@ abstract class GDICComponent extends CComponent implements IApplicationComponent
     private $_componentConfig = array();
 
 
+	public function __construct()
+	{
+		$this->registerCoreComponents();
+	}
+
     /**
      * @var array the behaviors that should be attached to this component.
      * The behaviors will be attached to the component when {@link init} is called.

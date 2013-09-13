@@ -1,0 +1,3 @@
+<?php
+
+$model = new Model();
