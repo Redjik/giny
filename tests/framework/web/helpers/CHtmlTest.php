@@ -659,12 +659,12 @@ class CHtmlTest extends CTestCase
 			array(
 				10,
 				'http://yiiframework.com/',
-				'<meta http-equiv="refresh" content="10;http://yiiframework.com/" />'."\n",
+				'<meta http-equiv="refresh" content="10;url=http://yiiframework.com/" />'."\n",
 			),
 			array(
 				15,
 				array('site/index'),
-				'<meta http-equiv="refresh" content="15;/bootstrap.php?r=site/index" />'."\n",
+				'<meta http-equiv="refresh" content="15;url=/bootstrap.php?r=site/index" />'."\n",
 			),
 		);
 	}
@@ -793,6 +793,7 @@ class CHtmlTest extends CTestCase
 			array(true, 'userName', array('for'=>'someTestingInput'), '<label class="error" for="someTestingInput">User Name</label>'),
 			array(true, 'firstName', array('label'=>'Custom Label'), '<label for="CHtmlTestActiveModel_firstName">Custom Label</label>'),
 			array(true, 'userName', array('label'=>false), ''),
+			array(false, '[1]userName', array('for'=>'customFor'), '<label for="customFor">User Name</label>'),
 		);
 	}
 
@@ -991,8 +992,8 @@ class CHtmlTest extends CTestCase
 	public function providerImageButton()
 	{
 		return array(
-			array('/images/test-image.png', array('src'=>'ignored-src'), '<input src="/images/test-image.png" type="image" name="yt0" value="submit" />'),
-			array('/images/test-image.jpg', array('type'=>'button'), '<input type="image" src="/images/test-image.jpg" name="yt0" value="submit" />'),
+			array('/images/test-image.png', array('src'=>'ignored-src'), '<input src="/images/test-image.png" type="image" name="yt0" />'),
+			array('/images/test-image.jpg', array('type'=>'button'), '<input type="image" src="/images/test-image.jpg" name="yt0" />'),
 			array('/images/test-image.gif', array('value'=>'image'), '<input value="image" src="/images/test-image.gif" type="image" name="yt0" />'),
 		);
 	}

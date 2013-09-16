@@ -283,7 +283,7 @@ class CClientScript extends CApplicationComponent
 			$jsFiles[$position]=array();
 			foreach($scriptFiles as $scriptFile=>$scriptFileValue)
 			{
-				$name=basename($scriptFileValue);
+				$name=basename($scriptFile);
 				if(isset($this->scriptMap[$name]))
 				{
 					if($this->scriptMap[$name]!==false)
@@ -318,13 +318,14 @@ class CClientScript extends CApplicationComponent
 				$scriptContent = $scriptValue['content'];
 				unset($scriptValue['content']);
 				$scriptHtmlOptions = $scriptValue;
+				ksort($scriptHtmlOptions);
 			}
 			else
 			{
 				$scriptContent = $scriptValue;
 				$scriptHtmlOptions = array();
 			}
-			$key=serialize(ksort($scriptHtmlOptions));
+			$key=serialize($scriptHtmlOptions);
 			$scriptBatches[$key]['htmlOptions']=$scriptHtmlOptions;
 			$scriptBatches[$key]['scripts'][]=$scriptContent;
 		}

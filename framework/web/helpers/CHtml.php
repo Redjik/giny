@@ -85,6 +85,11 @@ class CHtml
 	 * @since 1.1.13
 	 */
 	public static $renderSpecialAttributesValue=true;
+	/**
+	 * @var callback the generator used in the {@link CHtml::modelName()} method.
+	 * @since 1.1.14
+	 */
+	private static $_modelNameConverter;
 
 	/**
 	 * Encodes special characters into HTML entities.
@@ -254,11 +259,11 @@ class CHtml
 	 * @param string $url the URL to which the page should be redirected to. If empty, it means the current page.
 	 * @since 1.1.1
 	 */
-	public static function refresh($seconds, $url='')
+	public static function refresh($seconds,$url='')
 	{
 		$content="$seconds";
 		if($url!=='')
-			$content.=';'.self::normalizeUrl($url);
+			$content.=';url='.self::normalizeUrl($url);
 		Yii::app()->clientScript->registerMetaTag($content,null,'refresh');
 	}
 
@@ -330,6 +335,14 @@ class CHtml
 	public static function beginForm($action='',$method='post',$htmlOptions=array())
 	{
 		$htmlOptions['action']=$url=self::normalizeUrl($action);
+		if(strcasecmp($method,'get')!==0 && strcasecmp($method,'post')!==0)
+		{
+			$customMethod=$method;
+			$method='post';
+		}
+		else
+			$customMethod=false;
+
 		$htmlOptions['method']=$method;
 		$form=self::tag('form',$htmlOptions,false,false);
 		$hiddens=array();
@@ -346,6 +359,8 @@ class CHtml
 		$request=Yii::app()->request;
 		if($request->enableCsrfValidation && !strcasecmp($method,'post'))
 			$hiddens[]=self::hiddenField($request->csrfTokenName,$request->getCsrfToken(),array('id'=>false));
+		if($customMethod!==false)
+			$hiddens[]=self::hiddenField('_method',$customMethod);
 		if($hiddens!==array())
 			$form.="\n".self::tag('div',array('style'=>'display:none'),implode("\n",$hiddens));
 		return $form;
@@ -454,7 +469,7 @@ class CHtml
 		}
 		if(!isset($htmlOptions['type']))
 			$htmlOptions['type']='button';
-		if(!isset($htmlOptions['value']))
+		if(!isset($htmlOptions['value']) && $htmlOptions['type']!='image')
 			$htmlOptions['value']=$label;
 		self::clientChange('click',$htmlOptions);
 		return self::tag('input',$htmlOptions);
@@ -892,7 +907,7 @@ class CHtml
 	 *     OPTION tag attributes in the name-value pairs. For example,
 	 * <pre>
 	 *     array(
-	 *         'value1'=>array('disabled'=>true, 'label'=>'value 1'),
+	 *         'value1'=>array('disabled'=>true,'label'=>'value 1'),
 	 *         'value2'=>array('label'=>'value 2'),
 	 *     );
 	 * </pre>
@@ -920,7 +935,7 @@ class CHtml
 		$options="\n".self::listOptions($select,$data,$htmlOptions);
 		$hidden='';
 
-		if(isset($htmlOptions['multiple']))
+		if(!empty($htmlOptions['multiple']))
 		{
 			if(substr($htmlOptions['name'],-2)!=='[]')
 				$htmlOptions['name'].='[]';
@@ -958,7 +973,7 @@ class CHtml
 	 *     OPTION tag attributes in the name-value pairs. For example,
 	 * <pre>
 	 *     array(
-	 *         'value1'=>array('disabled'=>true, 'label'=>'value 1'),
+	 *         'value1'=>array('disabled'=>true,'label'=>'value 1'),
 	 *         'value2'=>array('label'=>'value 2'),
 	 *     );
 	 * </pre>
@@ -973,7 +988,7 @@ class CHtml
 	{
 		if(!isset($htmlOptions['size']))
 			$htmlOptions['size']=4;
-		if(isset($htmlOptions['multiple']))
+		if(!empty($htmlOptions['multiple']))
 		{
 			if(substr($name,-2)!=='[]')
 				$name.='[]';
@@ -996,7 +1011,9 @@ class CHtml
 	 * <ul>
 	 * <li>template: string, specifies how each checkbox is rendered. Defaults
 	 * to "{input} {label}", where "{input}" will be replaced by the generated
-	 * check box input tag while "{label}" be replaced by the corresponding check box label.</li>
+	 * check box input tag while "{label}" be replaced by the corresponding check box label,
+	 * {beginLabel} will be replaced by &lt;label&gt; with labelOptions, {labelTitle} will be replaced
+	 * by the corresponding check box label title and {endLabel} will be replaced by &lt;/label&gt;</li>
 	 * <li>separator: string, specifies the string that separates the generated check boxes.</li>
 	 * <li>checkAll: string, specifies the label for the "check all" checkbox.
 	 * If this option is specified, a 'check all' checkbox will be displayed. Clicking on
@@ -1040,15 +1057,23 @@ class CHtml
 		$id=0;
 		$checkAll=true;
 
-		foreach($data as $value=>$label)
+		foreach($data as $value=>$labelTitle)
 		{
 			$checked=!is_array($select) && !strcmp($value,$select) || is_array($select) && in_array($value,$select);
 			$checkAll=$checkAll && $checked;
 			$htmlOptions['value']=$value;
 			$htmlOptions['id']=$baseID.'_'.$id++;
 			$option=self::checkBox($name,$checked,$htmlOptions);
-			$label=self::label($label,$htmlOptions['id'],$labelOptions);
-			$items[]=strtr($template,array('{input}'=>$option,'{label}'=>$label));
+			$beginLabel=self::openTag('label',$labelOptions);
+			$label=self::label($labelTitle,$htmlOptions['id'],$labelOptions);
+			$endLabel=self::closeTag('label');
+			$items[]=strtr($template,array(
+				'{input}'=>$option,
+				'{beginLabel}'=>$beginLabel,
+				'{label}'=>$label,
+				'{labelTitle}'=>$labelTitle,
+				'{endLabel}'=>$endLabel,
+			));
 		}
 
 		if(isset($checkAllLabel))
@@ -1056,8 +1081,16 @@ class CHtml
 			$htmlOptions['value']=1;
 			$htmlOptions['id']=$id=$baseID.'_all';
 			$option=self::checkBox($id,$checkAll,$htmlOptions);
+			$beginLabel=self::openTag('label',$labelOptions);
 			$label=self::label($checkAllLabel,$id,$labelOptions);
-			$item=strtr($template,array('{input}'=>$option,'{label}'=>$label));
+			$endLabel=self::closeTag('label');
+			$item=strtr($template,array(
+				'{input}'=>$option,
+				'{beginLabel}'=>$beginLabel,
+				'{label}'=>$label,
+				'{labelTitle}'=>$checkAllLabel,
+				'{endLabel}'=>$endLabel,
+			));
 			if($checkAllLast)
 				$items[]=$item;
 			else
@@ -1097,7 +1130,9 @@ EOD;
 	 * <ul>
 	 * <li>template: string, specifies how each radio button is rendered. Defaults
 	 * to "{input} {label}", where "{input}" will be replaced by the generated
-	 * radio button input tag while "{label}" will be replaced by the corresponding radio button label.</li>
+	 * radio button input tag while "{label}" will be replaced by the corresponding radio button label,
+	 * {beginLabel} will be replaced by &lt;label&gt; with labelOptions, {labelTitle} will be replaced
+	 * by the corresponding radio button label title and {endLabel} will be replaced by &lt;/label&gt;</li>
 	 * <li>separator: string, specifies the string that separates the generated radio buttons. Defaults to new line (<br/>).</li>
 	 * <li>labelOptions: array, specifies the additional HTML attributes to be rendered
 	 * for every label tag in the list.</li>
@@ -1126,7 +1161,7 @@ EOD;
 		{
 			if(!is_array($htmlOptions['empty']))
 				$htmlOptions['empty']=array(''=>$htmlOptions['empty']);
-			$data=array_merge($htmlOptions['empty'],$data);
+			$data=CMap::mergeArray($htmlOptions['empty'],$data);
 			unset($htmlOptions['empty']);
 		}
 
@@ -1134,14 +1169,22 @@ EOD;
 		$baseID=isset($htmlOptions['baseID']) ? $htmlOptions['baseID'] : self::getIdByName($name);
 		unset($htmlOptions['baseID']);
 		$id=0;
-		foreach($data as $value=>$label)
+		foreach($data as $value=>$labelTitle)
 		{
 			$checked=!strcmp($value,$select);
 			$htmlOptions['value']=$value;
 			$htmlOptions['id']=$baseID.'_'.$id++;
 			$option=self::radioButton($name,$checked,$htmlOptions);
-			$label=self::label($label,$htmlOptions['id'],$labelOptions);
-			$items[]=strtr($template,array('{input}'=>$option,'{label}'=>$label));
+			$beginLabel=self::openTag('label',$labelOptions);
+			$label=self::label($labelTitle,$htmlOptions['id'],$labelOptions);
+			$endLabel=self::closeTag('label');
+			$items[]=strtr($template,array(
+				'{input}'=>$option,
+				'{beginLabel}'=>$beginLabel,
+				'{label}'=>$label,
+				'{labelTitle}'=>$labelTitle,
+				'{endLabel}'=>$endLabel,
+			));
 		}
 		if(empty($container))
 			return implode($separator,$items);
@@ -1204,7 +1247,8 @@ EOD;
 
 	/**
 	 * Generates the JavaScript that initiates an AJAX request.
-	 * @param array $options AJAX options. The valid options are specified in the jQuery ajax documentation.
+	 * @param array $options AJAX options. The valid options are used in the form of jQuery.ajax([settings])
+	 * as specified in the jQuery AJAX documentation.
 	 * The following special options are added for convenience:
 	 * <ul>
 	 * <li>update: string, specifies the selector whose HTML content should be replaced
@@ -1214,7 +1258,7 @@ EOD;
 	 * </ul>
 	 * Note, if you specify the 'success' option, the above options will be ignored.
 	 * @return string the generated JavaScript
-	 * @see http://docs.jquery.com/Ajax/jQuery.ajax#options
+	 * @see http://api.jquery.com/jQuery.ajax/#jQuery-ajax-settings
 	 */
 	public static function ajax($options)
 	{
@@ -1338,13 +1382,14 @@ EOD;
 	 */
 	public static function activeLabel($model,$attribute,$htmlOptions=array())
 	{
+		$inputName=self::resolveName($model,$attribute);
 		if(isset($htmlOptions['for']))
 		{
 			$for=$htmlOptions['for'];
 			unset($htmlOptions['for']);
 		}
 		else
-			$for=self::getIdByName(self::resolveName($model,$attribute));
+			$for=self::getIdByName($inputName);
 		if(isset($htmlOptions['label']))
 		{
 			if(($label=$htmlOptions['label'])===false)
@@ -1747,7 +1792,7 @@ EOD;
 	 *     OPTION tag attributes in the name-value pairs. For example,
 	 * <pre>
 	 *     array(
-	 *         'value1'=>array('disabled'=>true, 'label'=>'value 1'),
+	 *         'value1'=>array('disabled'=>true,'label'=>'value 1'),
 	 *         'value2'=>array('label'=>'value 2'),
 	 *     );
 	 * </pre>
@@ -1772,7 +1817,7 @@ EOD;
 			self::addErrorCss($htmlOptions);
 
 		$hidden='';
-		if(isset($htmlOptions['multiple']))
+		if(!empty($htmlOptions['multiple']))
 		{
 			if(substr($htmlOptions['name'],-2)!=='[]')
 				$htmlOptions['name'].='[]';
@@ -1812,7 +1857,7 @@ EOD;
 	 *     OPTION tag attributes in the name-value pairs. For example,
 	 * <pre>
 	 *     array(
-	 *         'value1'=>array('disabled'=>true, 'label'=>'value 1'),
+	 *         'value1'=>array('disabled'=>true,'label'=>'value 1'),
 	 *         'value2'=>array('label'=>'value 2'),
 	 *     );
 	 * </pre>
@@ -2117,7 +2162,7 @@ EOD;
 	 */
 	public static function getIdByName($name)
 	{
-		return str_replace(array('[]', '][', '[', ']', ' '), array('', '_', '_', '', '_'), $name);
+		return str_replace(array('[]','][','[',']',' '),array('','_','_','','_'),$name);
 	}
 
 	/**
@@ -2129,6 +2174,41 @@ EOD;
 	public static function activeId($model,$attribute)
 	{
 		return self::getIdByName(self::activeName($model,$attribute));
+	}
+
+	/**
+	 * Generates HTML name for given model.
+	 * @see CHtml::setModelNameConverter()
+	 * @param CModel|string $model the data model or the model class name
+	 * @return string the generated HTML name value
+	 * @since 1.1.14
+	 */
+	public static function modelName($model)
+	{
+		if(is_callable(self::$_modelNameConverter))
+			return call_user_func(self::$_modelNameConverter,$model);
+
+		$className=is_object($model) ? get_class($model) : (string)$model;
+		return trim(str_replace('\\','_',$className),'_');
+	}
+
+	/**
+	 * Set generator used in the {@link CHtml::modelName()} method. You can use the `null` value to restore default
+	 * generator.
+	 *
+	 * @param callback|null $converter the new generator, the model or class name will be passed to the this callback
+	 * and result must be a valid value for HTML name attribute.
+	 * @throws CException if $converter isn't a valid callback
+	 * @since 1.1.14
+	 */
+	public static function setModelNameConverter($converter)
+	{
+		if(is_callable($converter))
+			self::$_modelNameConverter=$converter;
+		elseif($converter===null)
+			self::$_modelNameConverter=null;
+		else
+			throw new CException(Yii::t('yii','The $converter argument must be a valid callback or null.'));
 	}
 
 	/**
@@ -2201,7 +2281,7 @@ EOD;
 	 *     OPTION tag attributes in the name-value pairs. For example,
 	 * <pre>
 	 *     array(
-	 *         'value1'=>array('disabled'=>true, 'label'=>'value 1'),
+	 *         'value1'=>array('disabled'=>true,'label'=>'value 1'),
 	 *         'value2'=>array('label'=>'value 2'),
 	 *     );
 	 * </pre>
@@ -2220,7 +2300,7 @@ EOD;
 		$content='';
 		if(isset($htmlOptions['prompt']))
 		{
-			$content.='<option value="">'.strtr($htmlOptions['prompt'],array('<'=>'&lt;', '>'=>'&gt;'))."</option>\n";
+			$content.='<option value="">'.strtr($htmlOptions['prompt'],array('<'=>'&lt;','>'=>'&gt;'))."</option>\n";
 			unset($htmlOptions['prompt']);
 		}
 		if(isset($htmlOptions['empty']))
@@ -2228,7 +2308,7 @@ EOD;
 			if(!is_array($htmlOptions['empty']))
 				$htmlOptions['empty']=array(''=>$htmlOptions['empty']);
 			foreach($htmlOptions['empty'] as $value=>$label)
-				$content.='<option value="'.self::encode($value).'">'.strtr($label,array('<'=>'&lt;', '>'=>'&gt;'))."</option>\n";
+				$content.='<option value="'.self::encode($value).'">'.strtr($label,array('<'=>'&lt;','>'=>'&gt;'))."</option>\n";
 			unset($htmlOptions['empty']);
 		}
 
@@ -2265,7 +2345,7 @@ EOD;
 			}
 			else
 			{
-				$attributes=array('value'=>(string)$key, 'encode'=>!$raw);
+				$attributes=array('value'=>(string)$key,'encode'=>!$raw);
 				if(!is_array($selection) && !strcmp($key,$selection) || is_array($selection) && in_array($key,$selection))
 					$attributes['selected']='selected';
 				if(isset($options[$key]))
@@ -2367,9 +2447,9 @@ EOD;
 		}
 
 		if($live)
-			$cs->registerScript('Yii.CHtml.#' . $id, "jQuery('body').on('$event','#$id',function(){{$handler}});");
+			$cs->registerScript('Yii.CHtml.#' . $id,"jQuery('body').on('$event','#$id',function(){{$handler}});");
 		else
-			$cs->registerScript('Yii.CHtml.#' . $id, "jQuery('#$id').on('$event', function(){{$handler}});");
+			$cs->registerScript('Yii.CHtml.#' . $id,"jQuery('#$id').on('$event', function(){{$handler}});");
 		unset($htmlOptions['params'],$htmlOptions['submit'],$htmlOptions['ajax'],$htmlOptions['confirm'],$htmlOptions['return'],$htmlOptions['csrf']);
 	}
 
@@ -2402,24 +2482,26 @@ EOD;
 	 */
 	public static function resolveName($model,&$attribute)
 	{
+		$modelName=self::modelName($model);
+
 		if(($pos=strpos($attribute,'['))!==false)
 		{
 			if($pos!==0)  // e.g. name[a][b]
-				return get_class($model).'['.substr($attribute,0,$pos).']'.substr($attribute,$pos);
+				return $modelName.'['.substr($attribute,0,$pos).']'.substr($attribute,$pos);
 			if(($pos=strrpos($attribute,']'))!==false && $pos!==strlen($attribute)-1)  // e.g. [a][b]name
 			{
 				$sub=substr($attribute,0,$pos+1);
 				$attribute=substr($attribute,$pos+1);
-				return get_class($model).$sub.'['.$attribute.']';
+				return $modelName.$sub.'['.$attribute.']';
 			}
 			if(preg_match('/\](\w+\[.*)$/',$attribute,$matches))
 			{
-				$name=get_class($model).'['.str_replace(']','][',trim(strtr($attribute,array(']['=>']','['=>']')),']')).']';
+				$name=$modelName.'['.str_replace(']','][',trim(strtr($attribute,array(']['=>']','['=>']')),']')).']';
 				$attribute=$matches[1];
 				return $name;
 			}
 		}
-		return get_class($model).'['.$attribute.']';
+		return $modelName.'['.$attribute.']';
 	}
 
 	/**
