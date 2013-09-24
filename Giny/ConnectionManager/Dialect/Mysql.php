@@ -8,6 +8,7 @@ namespace Giny\ConnectionManager\SqlDialect;
 
 class Mysql extends Dialect
 {
+
 	/**
 	 * Quotes a table name for use in a query.
 	 * A simple table name does not schema prefix.

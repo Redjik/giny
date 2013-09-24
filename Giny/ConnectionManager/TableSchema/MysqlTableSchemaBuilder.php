@@ -6,8 +6,6 @@
 namespace Giny\ConnectionManager\TableSchema;
 
 
-use Giny\ConnectionManager\Helper\MysqlHelper;
-
 class MysqlTableSchemaBuilder extends TableSchemaBuilder
 {
 
@@ -42,12 +40,12 @@ class MysqlTableSchemaBuilder extends TableSchemaBuilder
 		{
 			$table->schemaName=$parts[0];
 			$table->name=$parts[1];
-			$table->rawName=MysqlHelper::quoteTableName($table->schemaName).'.'.MysqlHelper::quoteTableName($table->name);
+			$table->rawName=$this->_dialect->quoteTableName($table->schemaName).'.'.$this->_dialect->quoteTableName($table->name);
 		}
 		else
 		{
 			$table->name=$parts[0];
-			$table->rawName=MysqlHelper::quoteTableName($table->name);
+			$table->rawName=$this->_dialect->quoteTableName($table->name);
 		}
 	}
 
@@ -95,7 +93,7 @@ class MysqlTableSchemaBuilder extends TableSchemaBuilder
 	{
 		$c=new \CMysqlColumnSchema;
 		$c->name=$column['Field'];
-		$c->rawName=MysqlHelper::quoteColumnName($c->name);
+		$c->rawName=$this->_dialect->quoteColumnName($c->name);
 		$c->allowNull=$column['Null']==='YES';
 		$c->isPrimaryKey=strpos($column['Key'],'PRI')!==false;
 		$c->isForeignKey=false;

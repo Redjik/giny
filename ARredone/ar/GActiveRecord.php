@@ -397,7 +397,7 @@ abstract class GActiveRecord extends CModel implements IActiveRecord
 	public static function model($className=__CLASS__)
 	{
 
-		Yii::app()->getConnectionManager()->createConnection->createSchema->createActiveRecord(CommandBuilder)
+//		Yii::app()->getConnectionManager()->createConnection->createSchema->createActiveRecord(CommandBuilder)
 
 //		if(isset(self::$_models[$className]))
 //			return self::$_models[$className];
